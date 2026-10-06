@@ -1,7 +1,14 @@
+local test = require "util.test"
+local love = require "love"
+local vm = require "emulator.vm"
+
+test.enable()
+
 -- current screen
 local screen = "menu"
 
-local love = require("love")
+-- in hertz
+local CPU_FREQUENCY = 200
 
 local buttons = {
         Load = {
@@ -149,5 +156,15 @@ end
 function love.draw()
     if screen == "menu" then
         drawMenu()
+    end
+end
+
+local cycle_accumulator = 0
+local cycle = vm.cycle
+function love.update(delta)
+    cycle_accumulator = cycle_accumulator + CPU_FREQUENCY * delta
+    while cycle_accumulator > 1 do
+        cycle()
+        cycle_accumulator = cycle_accumulator - 1
     end
 end
