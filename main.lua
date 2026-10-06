@@ -1,5 +1,8 @@
+local test = require "util.test"
 local love = require "love"
 local vm = require "emulator.vm"
+
+test.enable()
 
 -- current screen
 local screen = "menu"
