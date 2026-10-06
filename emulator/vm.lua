@@ -1,10 +1,10 @@
 local vm = {}
 
-local function cycle()
-    print "meow"
+local function _cycle()
     coroutine.yield()
 end
 
-vm.cycle = coroutine.wrap(cycle)
+local cycle = coroutine.wrap(function() while true do _cycle() end end)
+vm.cycle = cycle
 
 return vm
