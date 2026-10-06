@@ -4,39 +4,45 @@ local screen = "menu"
 local love = require("love")
 
 local buttons = {
-        ["Load"] = {
+        Load = {
             text = "Load ROM",
             x = 220,
             y = 180,
             width = 200,
             height = 50
         },
-        ["Settings"] = {
+
+        Settings = {
             text = "Settings",
             x = 220,
             y = 250,
             width = 200,
             height = 50
         },
-        ["Exit"] = {
+
+        Exit = {
             text = "Exit",
             x = 220,
             y = 320,
             width = 200,
             height = 50
-        }
+        },
     }
 
 local romData = nil
 local romPath = nil
 
+local function mouseOnButton(x,y,button)
+    if x >= buttons[button].x
+            and x <= buttons[button].x + buttons[button].width
+            and y >= buttons[button].y
+            and y <= buttons[button].y + buttons[button].height then return true else return false end
+end
+
 function love.mousepressed(x, y, button)
     if button == 1 then
         -- Check if the Load ROM button was clicked
-        if x >= buttons["Load"].x
-            and x <= buttons["Load"].x + buttons["Load"].width
-            and y >= buttons["Load"].y
-            and y <= buttons["Load"].y + buttons["Load"].height then
+        if mouseOnButton(x,y,"Load") then
 
             love.window.showFileDialog(
                 "openfile",
@@ -90,6 +96,14 @@ function love.mousepressed(x, y, button)
                     }
                 }
             )
+        end
+
+        if mouseOnButton(x,y,"Settings") then
+            -- implement settings
+        end
+
+        if mouseOnButton(x,y,"Exit") then
+            love.event.quit()
         end
     end
 end
