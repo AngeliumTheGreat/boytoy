@@ -12,11 +12,11 @@ local function setMem(x,val) memory[x-1]=val end
 
 -- registers
 local reg_A = 0
+local reg_F = 0
 local reg_B = 0
 local reg_C = 0
 local reg_D = 0
 local reg_E = 0
-local reg_F = 0
 local reg_H = 0
 local reg_L = 0
 local reg_IE = 0
