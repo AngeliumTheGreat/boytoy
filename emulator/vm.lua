@@ -50,6 +50,13 @@ local function setRegBC(x) reg_B=math.floor(x/32); reg_C=x%32 end
 local function setRegDE(x) reg_D=math.floor(x/32); reg_E=x%32 end
 local function setRegHL(x) reg_H=math.floor(x/32); reg_L=x%32 end
 
+-- reset
+local function resetVM()
+    for i=1,0x10000 do memory[i]=0 end
+    reg_A=0; reg_F=0; reg_B=0; reg_C=0; reg_D=0; reg_E=0; reg_H=0; reg_L=0; reg_IE=0; reg_IR=0
+    pc = 1
+end
+
 test.unit "vm - registers" (function()
     setRegB(3)
     assert(getRegB() == 3)
