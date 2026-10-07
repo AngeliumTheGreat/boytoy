@@ -1,4 +1,5 @@
-local math = require("math")
+local test = require "util.test"
+local math = require "math"
 local vm = {}
 local pc = 1
 
@@ -42,12 +43,19 @@ local function setRegBC(x) reg_B=math.floor(x/32); reg_C=x%32 end
 local function setRegDE(x) reg_D=math.floor(x/32); reg_E=x%32 end
 local function setRegHL(x) reg_H=math.floor(x/32); reg_L=x%32 end
 
+test.unit "vm - registers" (function()
+    setRegB(3)
+    assert(getRegB() == 3)
+    setRegBC(0x1234)
+    assert(getRegBC() == 0x1234)
+end)
+
 -- idle for a certain amount of M-cycles
 local function idle(cycles)
-
+    for i=1, cycles do
+        coroutine.yield()
+    end
 end
-
-
 
 local opcodes = {}
 
