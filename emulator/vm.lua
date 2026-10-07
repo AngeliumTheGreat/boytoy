@@ -3,6 +3,13 @@ local math = require "math"
 local vm = {}
 local pc = 1
 
+-- memory 
+local memory = {}
+for i=1,0x10000 do memory[i]=0 end
+
+local function getMem(x) return memory[x-1] end
+local function setMem(x,val) memory[x-1]=val end
+
 -- registers
 local reg_A = 0
 local reg_B = 0
