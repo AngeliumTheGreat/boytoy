@@ -61,6 +61,15 @@ local function setRegHL(x) reg_H=math.floor(x/32); reg_L=x%32 end
 local function getIndRegHL() idle(1); return getMem(getRegHL()) end
 local function setIndRegHL(x) idle(1); setMem(getRegHL(), x) end
 
+local function setFlagZ() setRegF(bit.bor(getRegF(), 0x40)) end
+local function setFlagN() setRegF(bit.bor(getRegF(), 0x20)) end
+local function setFlagH() setRegF(bit.bor(getRegF(), 0x10)) end
+local function setFlagC() setRegF(bit.bor(getRegF(), 0x08)) end
+local function resetFlagZ() setRegF(bit.band(getRegF(), 0xBF)) end
+local function resetFlagN() setRegF(bit.band(getRegF(), 0xDF)) end
+local function resetFlagH() setRegF(bit.band(getRegF(), 0xEF)) end
+local function resetFlagC() setRegF(bit.band(getRegF(), 0xF7)) end
+
 -- reset
 local function resetVM()
     for i=1,0x10000 do memory[i]=0 end
@@ -69,10 +78,31 @@ local function resetVM()
 end
 
 test.unit "vm - registers" (function()
+    resetVM()
     setRegB(3)
     assert(getRegB() == 3)
     setRegBC(0x1234)
     assert(getRegBC() == 0x1234)
+    resetVM()
+end)
+
+test.unit "vm - flags" (function()
+    resetVM()
+    assert(getRegF() == 0x00)
+    setFlagH()
+    setFlagZ()
+    assert(getRegF() == 0x50)
+    resetFlagZ()
+    assert(getRegF() == 0x10)
+    setFlagZ()
+    setFlagC()
+    setFlagN()
+    assert(getRegF() == 0x78)
+    resetFlagZ(); assert(getRegF() == 0x38)
+    resetFlagN(); assert(getRegF() == 0x18)
+    resetFlagH(); assert(getRegF() == 0x08)
+    resetFlagC(); assert(getRegF() == 0x00)
+    resetVM()
 end)
 
 -------------------------------------
