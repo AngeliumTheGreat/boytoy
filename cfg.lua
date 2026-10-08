@@ -6,10 +6,10 @@ return {
         left   = "left",
         right  = "right",
 
-        a      = "x",
-        b      = "z",
+        x      = "a",
+        z      = "b",
 
-        start  = "return",
-        select = "backspace"
+        ["return"]  = "start",
+        backspace = "select"
     }
 }

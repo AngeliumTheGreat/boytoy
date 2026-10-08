@@ -1,6 +1,9 @@
 local test = require "util.test"
 test.enable()
 
+local settings = require("settings")
+local keybindings = settings.keybindings
+
 local love = require "love"
 local vm = require "emulator.vm"
 
@@ -44,6 +47,15 @@ local function mouseOnButton(x,y,button)
             and x <= buttons[button].x + buttons[button].width
             and y >= buttons[button].y
             and y <= buttons[button].y + buttons[button].height then return true else return false end
+end
+
+function love.keypressed(key)
+    for keyboardKey, gameboyButton in pairs(keybindings) do
+        if key == keyboardKey then
+            emulator:press(gameboyButton)
+            break
+        end
+    end
 end
 
 function love.mousepressed(x, y, button)
