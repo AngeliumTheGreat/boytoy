@@ -122,7 +122,7 @@ end
 
 local function op_nop() end
 
-for i=1, 0xFF do
+for i=1, 0x100 do
     table.insert(opcodes, op_nop)
 end
 
