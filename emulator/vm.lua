@@ -90,11 +90,10 @@ end
 local cycle = coroutine.wrap(function() while true do _cycle() end end)
 vm.cycle = cycle
 
--- sets the program it is passed as the start of the rom and runs it
+-- sets the program it is passed as the rom and runs it. replaces fully, so rom
+-- must be reset afterwards. only runs until the rom ends, so it's good to keep it short
 local function testRun(program)
-    for i, k in ipairs(program) do -- load test program
-        memory[i] = k
-    end
+    memory = program
     local c = coroutine.wrap(function() while true do _cycle() end end)
     while pc <= #program + 1 do
         pcall(c)
