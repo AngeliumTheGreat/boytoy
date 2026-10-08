@@ -30,6 +30,9 @@ local reg_L = 0
 local reg_IE = 0
 local reg_IR = 0
 
+-- interrupt master enable
+local IME = 0
+
 local function getRegA() return reg_A end
 local function getRegF() return reg_F end
 local function getRegB() return reg_B end
@@ -130,6 +133,14 @@ for i, dest in ipairs {setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, set
         opcodes[0x40 + (i-1) * 8 + (j-1) + 1] = function() dest(src()) end
     end
 end
+
+-- DI, disable interrupts, 0xF3
+
+opcodes[0xF3+1] = function() IME=0 end
+
+---------------------
+-- unit test silly --
+---------------------
 
 test.unit "vm - LD" (function()
     resetVM()
