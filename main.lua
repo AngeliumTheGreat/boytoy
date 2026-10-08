@@ -1,7 +1,7 @@
 local test = require "util.test"
 test.enable()
 
-local settings = require("settings")
+local _, settings = pcall(require, "settings")
 local keybindings = settings.keybindings
 
 local love = require "love"
