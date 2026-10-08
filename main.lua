@@ -1,6 +1,9 @@
 local test = require "util.test"
 test.enable()
 
+local settings = require("settings")
+local keybindings = settings.keybindings
+
 local love = require "love"
 local vm = require "emulator.vm"
 
@@ -46,63 +49,20 @@ local function mouseOnButton(x,y,button)
             and y <= buttons[button].y + buttons[button].height then return true else return false end
 end
 
+function love.keypressed(key)
+    for keyboardKey, gameboyButton in pairs(keybindings) do
+        if key == keyboardKey then
+            emulator:press(gameboyButton)
+            break
+        end
+    end
+end
+
 function love.mousepressed(x, y, button)
     if button == 1 then
         -- Check if the Load ROM button was clicked
         if mouseOnButton(x,y,"Load") then
-
-            love.window.showFileDialog(
-                "openfile",
-                function(files, filtername, errorstring)
-
-                    -- User cancelled
-                    if #files == 0 then
-                        return
-                    end
-
-                    if errorstring then
-                        print("File dialog error: " .. errorstring)
-                        return
-                    end
-
-                    -- First selected file
-                    romPath = files[1]
-
-                    -- Open the ROM
-                    local file, err = love.filesystem.openNativeFile(
-                        romPath,
-                        "r"
-                    )
-
-                    if not file then
-                        print("Failed to open ROM: " .. tostring(err))
-                        return
-                    end
-
-                    -- Read the entire ROM
-                    romData = file:read()
-
-                    file:close()
-
-                    print("Loaded ROM: " .. romPath)
-                    print("ROM size: " .. #romData .. " bytes")
-
-                    -- Your emulator can start using romData here
-                    -- emulator.load(romData)
-                end,
-                {
-                    title = "Load ROM",
-                    acceptlabel = "Load",
-                    cancellabel = "Cancel",
-                    multiselect = false,
-                    attachtowindow = true,
-
-                    filters = {
-                        ["ROM Files"] = "*.nes;*.gb;*.gbc;*.gba;*.smc;*.sfc",
-                        ["All Files"] = "*"
-                    }
-                }
-            )
+            -- implement loading
         end
 
         if mouseOnButton(x,y,"Settings") then
@@ -150,9 +110,6 @@ function love.load()
     love.window.setMode(640, 480)
 end
 
-function love.update(dt)
-end
-
 function love.draw()
     if screen == "menu" then
         drawMenu()
@@ -161,8 +118,8 @@ end
 
 local cycle_accumulator = 0
 local cycle = vm.cycle
-function love.update(delta)
-    cycle_accumulator = cycle_accumulator + CPU_FREQUENCY * delta
+function love.update(dt)
+    cycle_accumulator = cycle_accumulator + CPU_FREQUENCY * dt
     while cycle_accumulator > 1 do
         cycle()
         cycle_accumulator = cycle_accumulator - 1
