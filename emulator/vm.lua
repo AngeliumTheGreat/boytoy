@@ -9,6 +9,14 @@ for i=1,0x10000 do memory[i]=0 end
 
 local function getMem(x) return memory[x-1] end
 local function setMem(x,val) memory[x-1]=val end
+local function getOpcode() pc = pc + 1; return memory[pc - 2] end
+
+-- idle for a certain amount of M-cycles
+local function idle(cycles)
+    for i=1, cycles do
+        coroutine.yield()
+    end
+end
 
 -- registers
 local reg_A = 0
@@ -50,6 +58,9 @@ local function setRegBC(x) reg_B=math.floor(x/32); reg_C=x%32 end
 local function setRegDE(x) reg_D=math.floor(x/32); reg_E=x%32 end
 local function setRegHL(x) reg_H=math.floor(x/32); reg_L=x%32 end
 
+local function getIndRegHL() idle(1); return getMem(getRegHL()) end
+local function setIndRegHL(x) idle(1); setMem(getRegHL(), x) end
+
 -- reset
 local function resetVM()
     for i=1,0x10000 do memory[i]=0 end
@@ -64,25 +75,80 @@ test.unit "vm - registers" (function()
     assert(getRegBC() == 0x1234)
 end)
 
--- idle for a certain amount of M-cycles
-local function idle(cycles)
-    for i=1, cycles do
-        coroutine.yield()
-    end
-end
+-------------------------------------
+-- core vm loop + helper functions --
+-------------------------------------
 
 local opcodes = {}
 
-for i=1, 0xFF do
-    table.insert(opcodes, function() end)
-end
-
 local function _cycle()
     pc = pc + 1
+    opcodes[memory[pc - 1] + 1]()   -- two offsets because of 0-index to 1-index conversion
     coroutine.yield()
 end
 
 local cycle = coroutine.wrap(function() while true do _cycle() end end)
 vm.cycle = cycle
+
+-- sets the program it is passed as the start of the rom and runs it
+local function testRun(program)
+    for i, k in ipairs(program) do -- load test program
+        memory[i] = k
+    end
+    local c = coroutine.wrap(function() while true do _cycle() end end)
+    while pc <= #program + 1 do
+        pcall(c)
+    end
+end
+
+-- time how many M-cycles it takes an opcode to run
+-- based on how many times it yields
+-- every opcode takes at least one cycle since the vm yields between instructions
+local function timeInstruction(instruction)
+    local instruction = opcodes[instruction + 1]
+    local instruction = coroutine.wrap(instruction)
+    i = 0
+    while pcall(instruction) do
+        i = i + 1
+    end
+    return i
+end
+
+-------------
+-- opcodes --
+-------------
+
+local function op_nop() end
+
+for i=1, 0xFF do
+    table.insert(opcodes, op_nop)
+end
+
+-- LD, 0x40 to 0x7F
+
+for i, dest in ipairs {setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA} do
+    for j, src in ipairs {getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA} do
+        opcodes[0x40 + (i-1) * 8 + (j-1) + 1] = function() dest(src()) end
+    end
+end
+
+test.unit "vm - LD" (function()
+    resetVM()
+    setRegB(0x12); setRegC(0x00);
+    -- LD C, B;
+    testRun {0x48}
+    assert(getRegC() == 0x12)
+    assert(timeInstruction(0x48) == 1)
+
+    resetVM()
+    setRegHL(0x0002); setRegA(0x67); setRegB(0x00);
+    -- LD [HL], A; LD B, [HL]; NOP (which gets overwritten)
+    testRun {0x77; 0x46; 0x00}
+    assert(getRegB() == getRegA())
+    -- indirect get / set instructions take one extra M-cycle
+    assert(timeInstruction(0x77) == 2 and timeInstruction(0x46) == 2)
+
+    resetVM()
+end)
 
 return vm
