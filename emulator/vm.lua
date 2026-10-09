@@ -6,11 +6,11 @@ local pc = 1
 local memory = {}
 for i=1,0x10000 do memory[i]=0 end
 
-local function getMem(x) return memory[x+1] end
-local function setMem(x,val) memory[x+1]=val end
+local function getMem(x) return memory[(x % 0x10000) + 1] end
+local function setMem(x,val) memory[(x % 0x10000) + 1] = val % 0x100 end
 local function getOpcode()
     local value = memory[pc]
-    pc = pc + 1
+    pc = (pc % 0x10000) + 1
     return value
 end
 
@@ -51,7 +51,7 @@ local function getRegDE() return (256*reg_D+reg_E) end
 local function getRegHL() return (256*reg_H+reg_L) end
 
 local function setRegA(x) reg_A=x end
-local function setRegF(x) reg_F=x end
+local function setRegF(x) reg_F = bit.band(x, 0xF0) end
 local function setRegB(x) reg_B=x end
 local function setRegC(x) reg_C=x end
 local function setRegD(x) reg_D=x end
@@ -59,7 +59,7 @@ local function setRegE(x) reg_E=x end
 local function setRegH(x) reg_H=x end
 local function setRegL(x) reg_L=x end
 
-local function setRegAF(x) x=x%0x10000; reg_A=math.floor(x/256); reg_F=x%256 end
+local function setRegAF(x) x=x%0x10000; reg_A=math.floor(x/256); reg_F = bit.band(x % 256, 0xF0) end
 local function setRegBC(x) x=x%0x10000; reg_B=math.floor(x/256); reg_C=x%256 end
 local function setRegDE(x) x=x%0x10000; reg_D=math.floor(x/256); reg_E=x%256 end
 local function setRegHL(x) x=x%0x10000; reg_H=math.floor(x/256); reg_L=x%256 end
@@ -133,6 +133,9 @@ end
 local cycle = coroutine.wrap(function() while true do _cycle() end end)
 vm.cycle = cycle
 
+-- how long does testRun run past the end of program length
+local testLenBuffer = 10
+
 -- sets the program it is passed as the rom and runs it. replaces fully, so rom
 -- must be reset afterwards. only runs until the rom ends, so it's good to keep it short
 local function testRun(program)
@@ -144,7 +147,7 @@ local function testRun(program)
             _cycle()
         end
     end)
-    for i = 1, #program + 10 do
+    for i = 1, #program + testLenBuffer do
         local ok = pcall(c)
         if not ok then
             break
@@ -400,17 +403,17 @@ end
 
 -- JR e, 0x18
 opcodes[0x18+1] = function()
-    pc = pc + toSigned8(getOpcode())
+    local e = getOpcode()
+    pc = pc + toSigned8(e)
     idle(2)
 end
 
 -- JR cc, e, 0x20 0x30 0x28 0x38
--- JR cc, r8: JR NZ, JR NC, JR Z, JR C
 for opcode, condition in pairs({
-    [0x20] = function() return not getFlagZ() end, -- JR NZ,r8
-    [0x30] = function() return not getFlagC() end, -- JR NC,r8
-    [0x28] = function() return getFlagZ() end,     -- JR Z,r8
-    [0x38] = function() return getFlagC() end      -- JR C,r8
+    [0x20] = function() return not getFlagZ() end, -- JR NZ,e
+    [0x30] = function() return not getFlagC() end, -- JR NC,e
+    [0x28] = function() return getFlagZ() end,     -- JR Z,e
+    [0x38] = function() return getFlagC() end      -- JR C,e
 }) do
     opcodes[opcode + 1] = function()
         local offset = toSigned8(getOpcode())
@@ -423,6 +426,153 @@ for opcode, condition in pairs({
         end
     end
 end
+
+test.unit "vm - JP and JR" (function()
+    -- These tests check the PC immediately after an instruction.
+    -- Avoid executing extra NOPs after the program ends.
+    local oldTestLenBuffer = testLenBuffer
+    testLenBuffer = 0
+
+    -- JP a16 (0xC3)
+    resetVM()
+    testRun {0xC3, 0x34, 0x12}
+    test.assert_equal(pc, 0x1234 + 1)
+    assert(timeInstruction(0xC3) == 4)
+
+    -- JP HL (0xE9)
+    resetVM()
+    setRegHL(0x4567)
+    testRun {0xE9}
+    test.assert_equal(pc, 0x4567 + 1)
+    assert(timeInstruction(0xE9) == 1)
+
+    -- JP NZ,a16 (0xC2), taken when Z=0
+    resetVM()
+    resetFlagZ()
+    testRun {0xC2, 0x00, 0xC0}
+    test.assert_equal(pc, 0xC000 + 1)
+    assert(timeInstruction(0xC2) == 4)
+
+    -- JP NZ,a16, not taken when Z=1
+    resetVM()
+    setFlagZ()
+    testRun {0xC2, 0x00, 0xC0}
+    test.assert_equal(pc, 4)
+    assert(timeInstruction(0xC2) == 3)
+
+    -- JP NC,a16 (0xD2), taken when C=0
+    resetVM()
+    resetFlagC()
+    testRun {0xD2, 0x00, 0xC1}
+    test.assert_equal(pc, 0xC100 + 1)
+    assert(timeInstruction(0xD2) == 4)
+
+    -- JP NC,a16, not taken when C=1
+    resetVM()
+    setFlagC()
+    testRun {0xD2, 0x00, 0xC1}
+    test.assert_equal(pc, 4)
+    assert(timeInstruction(0xD2) == 3)
+
+    -- JP Z,a16 (0xCA), taken when Z=1
+    resetVM()
+    setFlagZ()
+    testRun {0xCA, 0x00, 0xC2}
+    test.assert_equal(pc, 0xC200 + 1)
+    assert(timeInstruction(0xCA) == 4)
+
+    -- JP Z,a16, not taken when Z=0
+    resetVM()
+    resetFlagZ()
+    testRun {0xCA, 0x00, 0xC2}
+    test.assert_equal(pc, 4)
+    assert(timeInstruction(0xCA) == 3)
+
+    -- JP C,a16 (0xDA), taken when C=1
+    resetVM()
+    setFlagC()
+    testRun {0xDA, 0x00, 0xC3}
+    test.assert_equal(pc, 0xC300 + 1)
+    assert(timeInstruction(0xDA) == 4)
+
+    -- JP C,a16, not taken when C=0
+    resetVM()
+    resetFlagC()
+    testRun {0xDA, 0x00, 0xC3}
+    test.assert_equal(pc, 4)
+    assert(timeInstruction(0xDA) == 3)
+
+    -- JR e8 (0x18), positive offset
+    resetVM()
+    testRun {0x18, 0x05}
+    test.assert_equal(pc, 8)
+    assert(timeInstruction(0x18) == 3)
+
+    -- JR e8, negative offset
+    resetVM()
+    testRun {0x18, 0xFE}
+    test.assert_equal(pc, 1)
+    assert(timeInstruction(0x18) == 3)
+
+    -- JR NZ,e8 (0x20), taken
+    resetVM()
+    resetFlagZ()
+    testRun {0x20, 0x05}
+    test.assert_equal(pc, 8)
+    assert(timeInstruction(0x20) == 3)
+
+    -- JR NZ,e8, not taken
+    resetVM()
+    setFlagZ()
+    testRun {0x20, 0x05}
+    test.assert_equal(pc, 3)
+    assert(timeInstruction(0x20) == 2)
+
+    -- JR NC,e8 (0x30), taken
+    resetVM()
+    resetFlagC()
+    testRun {0x30, 0x05}
+    test.assert_equal(pc, 8)
+    assert(timeInstruction(0x30) == 3)
+
+    -- JR NC,e8, not taken
+    resetVM()
+    setFlagC()
+    testRun {0x30, 0x05}
+    test.assert_equal(pc, 3)
+    assert(timeInstruction(0x30) == 2)
+
+    -- JR Z,e8 (0x28), taken
+    resetVM()
+    setFlagZ()
+    testRun {0x28, 0x05}
+    test.assert_equal(pc, 8)
+    assert(timeInstruction(0x28) == 3)
+
+    -- JR Z,e8, not taken
+    resetVM()
+    resetFlagZ()
+    testRun {0x28, 0x05}
+    test.assert_equal(pc, 3)
+    assert(timeInstruction(0x28) == 2)
+
+    -- JR C,e8 (0x38), taken
+    resetVM()
+    setFlagC()
+    testRun {0x38, 0x05}
+    test.assert_equal(pc, 8)
+    assert(timeInstruction(0x38) == 3)
+
+    -- JR C,e8, not taken
+    resetVM()
+    resetFlagC()
+    testRun {0x38, 0x05}
+    test.assert_equal(pc, 3)
+    assert(timeInstruction(0x38) == 2)
+
+    resetVM()
+    testLenBuffer = oldTestLenBuffer
+end)
 
 ---------------------
 -- unit test silly --
@@ -440,7 +590,7 @@ test.unit "vm - LD" (function()
     setRegHL(0x0002); setRegA(0x67); setRegB(0x00);
     -- LD [HL], A; LD B, [HL]; NOP (which gets overwritten)
     testRun {0x77; 0x46; 0x00}
-    assert(getRegB(), getRegA())
+    assert(getRegB() == getRegA())
     -- indirect get / set instructions take one extra M-cycle
     assert(timeInstruction(0x77) == 2 and timeInstruction(0x46) == 2)
 
@@ -508,7 +658,7 @@ test.unit "vm - LD loads" (function()
     resetVM()
     setRegBC(0xC005); setMem(0xC005, 0x67)
     testRun {0x0A}
-    assert(getRegA(),0x67)
+    assert(getRegA() == 0x67)
     assert(timeInstruction(0x0A) == 2)
 
     -- LD A, [DE]
