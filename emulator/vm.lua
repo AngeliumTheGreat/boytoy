@@ -157,6 +157,14 @@ local function timeInstruction(instruction)
     return i
 end
 
+-- converts unsigned to signed 8 bit
+local function toSigned8(value)
+    if value >= 0x80 then
+        return value - 0x100
+    end
+    return value
+end
+
 -------------
 -- opcodes --
 -------------
@@ -244,6 +252,26 @@ test.unit "vm - AND" (function()
     test.assert_equal(timeInstruction(0xA6), 2)
     test.assert_equal(timeInstruction(0xE6), 2)
 end)
+
+-- JP nn, 0xC3
+opcodes[0xC3+1] = function()
+    local nn_lsb = getOpcode()
+    local nn_msb = getOpcode()
+    local nn = 256*nn_msb + nn_lsb
+    pc = nn+1
+    idle(3)
+end
+
+-- JP HL, 0xE9
+opcodes[0xE9+1] = function()
+    pc = getRegHL() + 1
+end
+
+-- JR e, 0x18
+opcodes[0x18+1] = function()
+    pc = pc + toSigned8(getOpcode())
+    idle(2)
+end
 
 ---------------------
 -- unit test silly --
