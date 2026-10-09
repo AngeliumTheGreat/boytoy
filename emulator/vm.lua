@@ -220,7 +220,7 @@ opcodes[0xFA+1] = function()
 
 opcodes[0xF3+1] = function() IME=0 end
 
--- AND, 0xA0 to 0xA7
+-- AND, 0xA0 to 0xA7, 0xE6
 
 local function op_and(src)
     resetFlagN(); setFlagH(); resetFlagC()
@@ -244,6 +244,108 @@ test.unit "vm - AND" (function()
     test.assert_equal(timeInstruction(0xA2), 1)
     test.assert_equal(timeInstruction(0xA6), 2)
     test.assert_equal(timeInstruction(0xE6), 2)
+
+    test.label "arithmetic and flags"
+    resetVM()
+    setRegA(0x88); setRegB(0x0F)
+    -- AND B
+    testRun { 0xA0 }
+    test.assert_equal(getRegA(), 0x08)
+    test.assert_equal(getRegF(), 0x20)
+    resetVM()
+    setRegA(0x12)
+    -- AND n8; 0x00
+    testRun { 0xE6, 0x00 }
+    test.assert_equal(getRegA(), 0x00)
+    test.assert_equal(getRegF(), 0xA0)
+    resetVM()
+end)
+
+-- XOR, 0xA8 to 0xAF, 0xEE
+
+local function op_xor(src)
+    resetFlagN(); resetFlagH(); resetFlagC()
+    local r = bit.bxor(getRegA(), src())
+    setRegA(r)
+    if r == 0 then
+        setFlagZ()
+    else
+        resetFlagZ()
+    end
+end
+
+for i, src in ipairs { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA } do
+    opcodes[0xA8 + (i-1) + 1] = function() op_xor(src) end
+end
+
+opcodes[0xEE + 1] = function() idle(1); op_xor(getOpcode) end
+
+test.unit "vm - XOR" (function()
+    test.label "timings"
+    test.assert_equal(timeInstruction(0xAA), 1)
+    test.assert_equal(timeInstruction(0xAE), 2)
+    test.assert_equal(timeInstruction(0xEE), 2)
+
+    test.label "arithmetic and flags"
+    resetVM()
+    setRegA(0xAA); setRegD(0x0F)
+    -- XOR D
+    testRun { 0xAA }
+    test.assert_equal(getRegA(), 0xA5)
+    test.assert_equal(getRegF(), 0x00)
+    resetVM()
+    setRegA(0x0F)
+    -- XOR n8; 0x0F
+    testRun { 0xEE, 0x0F }
+    test.assert_equal(getRegA(), 0x00)
+    test.assert_equal(getRegF(), 0x80)
+    resetVM()
+end)
+
+-- OR, 0xB0 to 0xB7, 0xF6
+
+local function op_or(src)
+    resetFlagN(); resetFlagH(); resetFlagC()
+    local r = bit.bor(getRegA(), src())
+    setRegA(r)
+    if r == 0 then
+        setFlagZ()
+    else
+        resetFlagZ()
+    end
+end
+
+for i, src in ipairs { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA } do
+    opcodes[0xB0 + (i-1) + 1] = function() op_or(src) end
+end
+
+opcodes[0xF6 + 1] = function() idle(1); op_or(getOpcode) end
+
+test.unit "vm - OR" (function()
+    test.label "timings"
+    test.assert_equal(timeInstruction(0xB2), 1)
+    test.assert_equal(timeInstruction(0xB6), 2)
+    test.assert_equal(timeInstruction(0xF6), 2)
+
+    test.label "arithmetic and flags"
+    resetVM()
+    setRegA(0x40); setRegH(0x12); setRegF(0x40)
+    -- OR H
+    testRun { 0xB4 }
+    test.assert_equal(getRegA(), 0x52)
+    test.assert_equal(getRegF(), 0x00)
+    resetVM()
+    -- OR B
+    testRun { 0xB0 }
+    test.assert_equal(getRegA(), 0x00)
+    test.assert_equal(getRegF(), 0x80)
+    resetVM()
+    setRegA(0xF0); setRegF(0x10)
+    -- OR n8; 0xFF
+    testRun { 0xF6, 0xFF }
+    test.assert_equal(getRegA(), 0xFF)
+    test.assert_equal(getRegF(), 0x00)
+    resetVM()
 end)
 
 ---------------------
