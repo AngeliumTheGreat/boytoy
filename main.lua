@@ -52,8 +52,7 @@ end
 function love.keypressed(key)
     for keyboardKey, gameboyButton in pairs(keybindings) do
         if key == keyboardKey then
-            emulator:press(gameboyButton)
-            break
+            -- IMPLEMENT: press da key in the emulator
         end
     end
 end

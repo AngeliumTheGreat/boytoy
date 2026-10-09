@@ -1,5 +1,4 @@
 local test = require "util.test"
-local math = require "math"
 local vm = {}
 local pc = 1
 
@@ -7,9 +6,13 @@ local pc = 1
 local memory = {}
 for i=1,0x10000 do memory[i]=0 end
 
-local function getMem(x) return memory[x-1] end
-local function setMem(x,val) memory[x-1]=val end
-local function getOpcode() pc = pc + 1; return memory[pc - 2] end
+local function getMem(x) return memory[x+1] end
+local function setMem(x,val) memory[x+1]=val % 0x100 end
+local function getOpcode()
+    local value = memory[pc]
+    pc = pc + 1
+    return values
+end
 
 -- idle for a certain amount of M-cycles
 local function idle(cycles)
@@ -30,6 +33,9 @@ local reg_L = 0
 local reg_IE = 0
 local reg_IR = 0
 
+-- interrupt master enable
+local IME = 0
+
 local function getRegA() return reg_A end
 local function getRegF() return reg_F end
 local function getRegB() return reg_B end
@@ -39,10 +45,10 @@ local function getRegE() return reg_E end
 local function getRegH() return reg_H end
 local function getRegL() return reg_L end
 
-local function getRegAF() return (32*reg_A+reg_F) end
-local function getRegBC() return (32*reg_B+reg_C) end
-local function getRegDE() return (32*reg_D+reg_E) end
-local function getRegHL() return (32*reg_H+reg_L) end
+local function getRegAF() return (256*reg_A+reg_F) end
+local function getRegBC() return (256*reg_B+reg_C) end
+local function getRegDE() return (256*reg_D+reg_E) end
+local function getRegHL() return (256*reg_H+reg_L) end
 
 local function setRegA(x) reg_A=x end
 local function setRegF(x) reg_F=x end
@@ -53,10 +59,10 @@ local function setRegE(x) reg_E=x end
 local function setRegH(x) reg_H=x end
 local function setRegL(x) reg_L=x end
 
-local function setRegAF(x) reg_A=math.floor(x/32); reg_F=x%32 end
-local function setRegBC(x) reg_B=math.floor(x/32); reg_C=x%32 end
-local function setRegDE(x) reg_D=math.floor(x/32); reg_E=x%32 end
-local function setRegHL(x) reg_H=math.floor(x/32); reg_L=x%32 end
+local function setRegAF(x) reg_A=math.floor(x/256); reg_F=x%256 end
+local function setRegBC(x) reg_B=math.floor(x/256); reg_C=x%256 end
+local function setRegDE(x) reg_D=math.floor(x/256); reg_E=x%256 end
+local function setRegHL(x) reg_H=math.floor(x/256); reg_L=x%256 end
 
 local function getIndRegHL() idle(1); return getMem(getRegHL()) end
 local function setIndRegHL(x) idle(1); setMem(getRegHL(), x) end
@@ -136,7 +142,7 @@ end
 local function timeInstruction(instruction)
     local instruction = opcodes[instruction + 1]
     local instruction = coroutine.wrap(instruction)
-    i = 0
+    local i = 0
     while pcall(instruction) do
         i = i + 1
     end
@@ -160,6 +166,24 @@ for i, dest in ipairs {setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, set
         opcodes[0x40 + (i-1) * 8 + (j-1) + 1] = function() dest(src()) end
     end
 end
+
+-- LD, 0xX2
+opcodes[0x02+1] = function() setMem(getRegBC(), getRegA()); idle(1) end
+opcodes[0x12+1] = function() setMem(getRegDE(), getRegA()); idle(1) end
+opcodes[0x22+1] = function() setMem(getRegHL(), getRegA()); setRegHL(getRegHL()+1); idle(1) end
+opcodes[0x32+1] = function() setMem(getRegHL(), getRegA()); setRegHL(getRegHL()-1); idle(1) end
+
+-- LD, 0xX6
+opcodes[0x06+1] = function() setRegB(getOpcode()); idle(1) end
+
+
+-- DI, disable interrupts, 0xF3
+
+opcodes[0xF3+1] = function() IME=0 end
+
+---------------------
+-- unit test silly --
+---------------------
 
 test.unit "vm - LD" (function()
     resetVM()
