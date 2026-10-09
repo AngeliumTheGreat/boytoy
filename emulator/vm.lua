@@ -167,6 +167,14 @@ local function timeInstruction(instruction)
     return i
 end
 
+-- converts unsigned to signed 8 bit
+local function toSigned8(value)
+    if value >= 0x80 then
+        return value - 0x100
+    end
+    return value
+end
+
 -------------
 -- opcodes --
 -------------
@@ -398,6 +406,67 @@ test.unit "vm - BIT" (function()
     assert(not getFlagZ())
     resetVM()
 end)
+
+-- JP nn, 0xC3
+opcodes[0xC3+1] = function()
+    local nn_lsb = getOpcode()
+    local nn_msb = getOpcode()
+    local nn = 256*nn_msb + nn_lsb
+    pc = nn+1
+    idle(3)
+end
+
+-- JP HL, 0xE9
+opcodes[0xE9+1] = function()
+    pc = getRegHL() + 1
+end
+
+-- JP cc, nn, 0xC2 0xD2 0xCA 0xDA
+for opcode, condition in pairs({
+    [0xC2] = function() return not getFlagZ() end, -- JP NZ,nn
+    [0xD2] = function() return not getFlagC() end, -- JP NC,nn
+    [0xCA] = function() return getFlagZ() end,     -- JP Z,nn
+    [0xDA] = function() return getFlagC() end      -- JP C,nn
+}) do
+    opcodes[opcode + 1] = function()
+        local lo = getOpcode()
+        local hi = getOpcode()
+        local addr = hi * 0x100 + lo
+
+        if condition() then
+            pc = addr + 1
+            idle(3)
+        else
+            idle(2)
+        end
+    end
+end
+
+-- JR e, 0x18
+opcodes[0x18+1] = function()
+    pc = pc + toSigned8(getOpcode())
+    idle(2)
+end
+
+-- JR cc, e, 0x20 0x30 0x28 0x38
+-- JR cc, r8: JR NZ, JR NC, JR Z, JR C
+for opcode, condition in pairs({
+    [0x20] = function() return not getFlagZ() end, -- JR NZ,r8
+    [0x30] = function() return not getFlagC() end, -- JR NC,r8
+    [0x28] = function() return getFlagZ() end,     -- JR Z,r8
+    [0x38] = function() return getFlagC() end      -- JR C,r8
+}) do
+    opcodes[opcode + 1] = function()
+        local offset = toSigned8(getOpcode())
+
+        if condition() then
+            pc = pc + offset
+            idle(2)
+        else
+            idle(1)
+        end
+    end
+end
 
 ---------------------
 -- unit test silly --
