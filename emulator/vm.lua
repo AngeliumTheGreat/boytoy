@@ -168,7 +168,7 @@ for i, dest in ipairs {setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, set
 end
 
 -- LD, 0xX2
-opcodes[0x02+1] = function() setMem(getRegBC(), getRegA()); idle(1) end
+opcodes[0x02+1] = function() setMem(getRegBC(), getRegA()); idle(1)  end
 opcodes[0x12+1] = function() setMem(getRegDE(), getRegA()); idle(1) end
 opcodes[0x22+1] = function() setMem(getRegHL(), getRegA()); setRegHL(getRegHL()+1); idle(1) end
 opcodes[0x32+1] = function() setMem(getRegHL(), getRegA()); setRegHL(getRegHL()-1); idle(1) end
