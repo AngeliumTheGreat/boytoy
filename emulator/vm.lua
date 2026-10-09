@@ -147,7 +147,7 @@ local function testRun(program)
             _cycle()
         end
     end)
-    for i = 1, #program + testLenBuffer do
+    for i = 1, (#program + testLenBuffer) * 4 do
         local ok = pcall(c)
         if not ok then
             break
@@ -682,7 +682,7 @@ opcodes[0xCB+1] = function() idle(1); prefixed_opcodes[getOpcode() + 1]() end
 -- BIT, 0xCB 0x40 to 0xCB 0x7F
 
 local function op_bit(mask, src)
-    idle(1); resetFlagN(); setFlagH()
+    resetFlagN(); setFlagH()
     if bit.band(src(), mask) == 0 then
         setFlagZ()
     else
@@ -697,8 +697,8 @@ for i, mask in ipairs { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 } do
 end
 
 test.unit "vm - BIT" (function()
-    test.assert_equal(timeInstruction(prefixed_opcodes[0x40 + 1]), 2)
-    test.assert_equal(timeInstruction(prefixed_opcodes[0x66 + 1]), 3)
+    test.assert_equal(timeInstruction(prefixed_opcodes[0x40 + 1]), 1)
+    test.assert_equal(timeInstruction(prefixed_opcodes[0x66 + 1]), 2)
 
     resetVM()
     setRegE(0x20)
@@ -710,6 +710,40 @@ test.unit "vm - BIT" (function()
     -- BIT 5 E
     testRun { 0xCB, 0x6B }
     assert(not getFlagZ())
+    resetVM()
+end)
+
+-- RES, 0xCB 0x80 to 0xCB 0xBF
+
+local function op_res(mask, src, dest)
+    dest(bit.band(mask, src()))
+end
+
+for i, mask in ipairs { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 } do
+    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
+    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
+
+    mask = bit.bxor(mask, 0xFF)
+
+    for j=1, 8 do
+        prefixed_opcodes[0x80 + (i-1) * 8 + (j-1) + 1] = function() op_res(mask, srcs[j], dests[j]) end
+    end
+end
+
+test.unit "vm - RES" (function()
+    test.assert_equal(timeInstruction(prefixed_opcodes[0x82 + 1]), 1)
+    test.assert_equal(timeInstruction(prefixed_opcodes[0x86 + 1]), 3)
+
+    resetVM()
+    setRegH(0xF0)
+    -- RES 6 H; RES 4 H
+    testRun { 0xCB, 0xB4, 0xCB, 0xA4 }
+    test.assert_equal(getRegH(), 0xA0)
+    resetVM()
+    setRegHL(0x0200); setMem(0x200, 0x18)
+    -- RES 4 [HL]
+    testRun { 0xCB, 0xA6 }
+    test.assert_equal(getMem(0x200), 0x08)
     resetVM()
 end)
 
