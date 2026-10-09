@@ -276,8 +276,8 @@ test.unit "vm - LD loads" (function()
     -- LD B, d8
     resetVM()
     testRun {0x06, 0x12}
-    test.assert_equal(getRegB(),0x12)
-    test.assert_equal(timeInstruction(0x06),2)
+    assert(getRegB() == 0x12)
+    assert(timeInstruction(0x06) == 2)
 
     -- LD D, d8
     resetVM()
@@ -297,21 +297,21 @@ test.unit "vm - LD loads" (function()
     setRegHL(0xC004)
     testRun {0x36, 0x56}
     assert(getMem(0xC004) == 0x56)
-    test.assert_equal(timeInstruction(0x36),3)
+    assert(timeInstruction(0x36) == 3)
     
     -- LD A, [BC]
     resetVM()
     setRegBC(0xC005); setMem(0xC005, 0x67)
     testRun {0x0A}
-    test.assert_equal(getRegA(),0x67)
+    assert(getRegA(),0x67)
     assert(timeInstruction(0x0A) == 2)
 
     -- LD A, [DE]
     resetVM()
     setRegDE(0xC006); setMem(0xC006, 0x78)
     testRun {0x1A}
-    assert(getRegA(),0x78)
-    test.assert_equal(timeInstruction(0x1A),2)
+    assert(getRegA()==0x78)
+    assert(timeInstruction(0x1A) == 2)
 
     -- LD A, [HL+]
     resetVM()
