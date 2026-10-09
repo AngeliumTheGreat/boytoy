@@ -1,6 +1,7 @@
 local test = require "util.test"
 local vm = {}
 local pc = 1
+local sp = 0
 
 -- memory 
 local memory = {}
@@ -79,6 +80,15 @@ local function getFlagZ() return bit.band(getRegF(), 0x80) ~= 0 end
 local function getFlagN() return bit.band(getRegF(), 0x40) ~= 0 end
 local function getFlagH() return bit.band(getRegF(), 0x20) ~= 0 end
 local function getFlagC() return bit.band(getRegF(), 0x10) ~= 0 end
+
+local function setFlags(z, n, h, c)
+    local f = 0
+    if z then f = f + 0x80 end
+    if n then f = f + 0x40 end
+    if h then f = f + 0x20 end
+    if c then f = f + 0x10 end
+    setRegF(f)
+end
 
 -- reset
 local function resetVM()
@@ -579,10 +589,7 @@ end)
 local function op_cp(value)
     local a = getRegA()
     local result = a - value
-    if result % 0x100 == 0 then setFlagZ() else resetFlagZ() end
-    setFlagN()
-    if bit.band(a, 0x0F) < bit.band(value, 0x0F) then setFlagH() else resetFlagH() end
-    if a<value then setFlagC() else resetFlagC() end
+    setFlags(result % 0x100 == 0, true, bit.band(a, 0x0F) < bit.band(value, 0x0F), a<value)
 end
 
 -- CP r/[HL], 0xB8 - 0xBF
@@ -600,6 +607,106 @@ opcodes[0xFE + 1] = function() idle(1); op_cp(getOpcode()) end
 
 test.unit "vm - CP" (function()
 
+    -- Equal values: Z=1, N=1, H=0, C=0
+    setRegA(0x42)
+    resetFlagZ(); resetFlagN(); resetFlagH(); resetFlagC()
+    op_cp(0x42)
+    assert(getRegA() == 0x42)
+    assert(getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- No borrow, nonzero result: Z=0, N=1, H=0, C=0
+    setRegA(0x50)
+    resetFlagZ(); resetFlagN(); resetFlagH(); resetFlagC()
+    op_cp(0x10)
+    assert(getRegA() == 0x50)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- Half-borrow only: Z=0, N=1, H=1, C=0
+    setRegA(0x10)
+    resetFlagZ(); resetFlagN(); resetFlagH(); resetFlagC()
+    op_cp(0x01)
+    assert(getRegA() == 0x10)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(getFlagH())
+    assert(not getFlagC())
+
+    -- Full borrow: Z=0, N=1, H=1, C=1
+    setRegA(0x00)
+    resetFlagZ(); resetFlagN(); resetFlagH(); resetFlagC()
+    op_cp(0x01)
+    assert(getRegA() == 0x00)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(getFlagH())
+    assert(getFlagC())
+
+    -- Full borrow without half-borrow: Z=0, N=1, H=0, C=1
+    setRegA(0x10)
+    resetFlagZ(); resetFlagN(); resetFlagH(); resetFlagC()
+    op_cp(0x20)
+    assert(getRegA() == 0x10)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(getFlagC())
+
+    -- Maximum value compared with zero: no borrow
+    setRegA(0xFF)
+    resetFlagZ(); resetFlagN(); resetFlagH(); resetFlagC()
+    op_cp(0x00)
+    assert(getRegA() == 0xFF)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- Zero compared with zero
+    setRegA(0x00)
+    resetFlagZ(); resetFlagN(); resetFlagH(); resetFlagC()
+    op_cp(0x00)
+    assert(getRegA() == 0x00)
+    assert(getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+end)
+
+-- RLCA, RLA, RRCA, RRA, 0x07 0x17 0x0F 0x1F
+opcodes[0x07 + 1] = function()
+    local a = getRegA()
+    local b7 = bit.band(a,0x80) ~= 0
+    setFlags(false, false, false, b7)
+    setRegA((bit.lshift(a,1)+(b7 and 1 or 0))%0x100) 
+end
+opcodes[0x17 + 1] = function()
+    local a = getRegA()
+    local b7 = bit.band(a,0x80) ~= 0
+    local C = getFlagC() and 1 or 0
+    setFlags(false, false, false, b7)
+    setRegA((bit.lshift(a,1)+C)%0x100) 
+end
+opcodes[0x0F + 1] = function()
+    local a = getRegA()
+    local b0 = bit.band(a,0x01)
+    setFlags(false, false, false, b0==1)
+    setRegA((bit.rshift(a,1)+bit.lshift(b0,7))%0x100) 
+end
+opcodes[0x1F + 1] = function()
+    local a = getRegA()
+    local b0 = bit.band(a,0x01)
+    local C = getFlagC() and 1 or 0
+    setFlags(false, false, false, b0==1)
+    setRegA((bit.rshift(a,1)+bit.lshift(C,7))%0x100) 
+end
+
+test.unit "vm - Rotate" (function()
     -- Equal values: Z=1, N=1, H=0, C=0
     setRegA(0x42)
     resetFlagZ(); resetFlagN(); resetFlagH(); resetFlagC()
