@@ -763,14 +763,14 @@ for i, mask in ipairs { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 } do
     end
 end
 
-test.unit "vm - RES" (function()
+test.unit "vm - SET" (function()
     test.assert_equal(timeInstruction(prefixed_opcodes[0xC2 + 1]), 1)
     test.assert_equal(timeInstruction(prefixed_opcodes[0xC6 + 1]), 3)
 
     resetVM()
     setRegF(0x30)
     -- SET 4 C; SET 2 C
-    testRun { 0xCB, 0xE2, 0xCB, 0xD2 }
+    testRun { 0xCB, 0xE1, 0xCB, 0xD1 }
     test.assert_equal(getRegC(), 0x14)
     test.assert_equal(getRegF(), 0x30)
     resetVM()
