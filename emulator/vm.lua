@@ -867,6 +867,332 @@ test.unit "vm - ADD" (function()
     assert(getFlagC())
 end)
 
+local function op_adc(value)
+    local a = getRegA()
+    local carry = getFlagC() and 1 or 0
+    local result = a + value + carry
+
+    setRegA(result % 0x100)
+    setFlags(
+        result % 0x100 == 0,
+        false,
+        (a % 0x10) + (value % 0x10) + carry > 0x0F,
+        result > 0xFF
+    )
+end
+
+-- ADC, 0x88-0x8F
+opcodes[0x88 + 1] = function() op_adc(getRegB()) end
+opcodes[0x89 + 1] = function() op_adc(getRegC()) end
+opcodes[0x8A + 1] = function() op_adc(getRegD()) end
+opcodes[0x8B + 1] = function() op_adc(getRegE()) end
+opcodes[0x8C + 1] = function() op_adc(getRegH()) end
+opcodes[0x8D + 1] = function() op_adc(getRegL()) end
+opcodes[0x8E + 1] = function() op_adc(getIndRegHL()) end
+opcodes[0x8F + 1] = function() op_adc(getRegA()) end
+
+test.unit "vm - ADC" (function()
+    -- Normal addition, carry clear: 0x12 + 0x23 = 0x35
+    setRegA(0x12)
+    resetFlagC()
+    op_adc(0x23)
+    assert(getRegA() == 0x35)
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- Carry-in contributes to the result: 0x12 + 0x23 + 1 = 0x36
+    setRegA(0x12)
+    setFlagC()
+    op_adc(0x23)
+    assert(getRegA() == 0x36)
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- Half-carry caused by carry-in: 0x0F + 0x00 + 1 = 0x10
+    setRegA(0x0F)
+    setFlagC()
+    op_adc(0x00)
+    assert(getRegA() == 0x10)
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(getFlagH())
+    assert(not getFlagC())
+
+    -- Full carry and zero result: 0xFF + 0x00 + 1 = 0x00
+    setRegA(0xFF)
+    setFlagC()
+    op_adc(0x00)
+    assert(getRegA() == 0x00)
+    assert(getFlagZ())
+    assert(not getFlagN())
+    assert(getFlagH())
+    assert(getFlagC())
+
+    -- Full carry without half-carry: 0xF0 + 0x0F + 1 = 0x00
+    setRegA(0xF0)
+    setFlagC()
+    op_adc(0x0F)
+    assert(getRegA() == 0x00)
+    assert(getFlagZ())
+    assert(not getFlagN())
+    assert(getFlagH())
+    assert(getFlagC())
+
+    -- No carry-in, maximum result: 0xFE + 0x01 = 0xFF
+    setRegA(0xFE)
+    resetFlagC()
+    op_adc(0x01)
+    assert(getRegA() == 0xFF)
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- Zero plus zero plus carry-in: result is one
+    setRegA(0x00)
+    setFlagC()
+    op_adc(0x00)
+    assert(getRegA() == 0x01)
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+end)
+
+local function op_sub(value)
+    local a = getRegA()
+    local result = a - value
+
+    setRegA(result % 0x100)
+    setFlags(
+        result % 0x100 == 0,
+        true,
+        (a % 0x10) < (value % 0x10),
+        a < value
+    )
+end
+
+-- SUB, 0x90-0x97
+opcodes[0x90 + 1] = function() op_sub(getRegB()) end
+opcodes[0x91 + 1] = function() op_sub(getRegC()) end
+opcodes[0x92 + 1] = function() op_sub(getRegD()) end
+opcodes[0x93 + 1] = function() op_sub(getRegE()) end
+opcodes[0x94 + 1] = function() op_sub(getRegH()) end
+opcodes[0x95 + 1] = function() op_sub(getRegL()) end
+opcodes[0x96 + 1] = function() op_sub(getIndRegHL()) end
+opcodes[0x97 + 1] = function() op_sub(getRegA()) end
+
+local function op_sbc(value)
+    local a = getRegA()
+    local carry = getFlagC() and 1 or 0
+    local result = a - value - carry
+
+    setRegA(result % 0x100)
+    setFlags(
+        result % 0x100 == 0,
+        true,
+        (a % 0x10) < ((value % 0x10) + carry),
+        a < (value + carry)
+    )
+end
+
+-- SBC, 0x98-0x9F
+opcodes[0x98 + 1] = function() op_sbc(getRegB()) end
+opcodes[0x99 + 1] = function() op_sbc(getRegC()) end
+opcodes[0x9A + 1] = function() op_sbc(getRegD()) end
+opcodes[0x9B + 1] = function() op_sbc(getRegE()) end
+opcodes[0x9C + 1] = function() op_sbc(getRegH()) end
+opcodes[0x9D + 1] = function() op_sbc(getRegL()) end
+opcodes[0x9E + 1] = function() op_sbc(getIndRegHL()) end
+opcodes[0x9F + 1] = function() op_sbc(getRegA()) end
+
+
+test.unit "vm - SUB" (function()
+    -- Normal subtraction: 0x35 - 0x12 = 0x23
+    setRegA(0x35)
+    op_sub(0x12)
+    assert(getRegA() == 0x23)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- Equal operands: 0x42 - 0x42 = 0x00
+    setRegA(0x42)
+    op_sub(0x42)
+    assert(getRegA() == 0x00)
+    assert(getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- Half-borrow only: 0x10 - 0x01 = 0x0F
+    setRegA(0x10)
+    op_sub(0x01)
+    assert(getRegA() == 0x0F)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(getFlagH())
+    assert(not getFlagC())
+
+    -- Full borrow: 0x00 - 0x01 = 0xFF
+    setRegA(0x00)
+    op_sub(0x01)
+    assert(getRegA() == 0xFF)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(getFlagH())
+    assert(getFlagC())
+
+    -- Full borrow without half-borrow: 0x10 - 0x20 = 0xF0
+    setRegA(0x10)
+    op_sub(0x20)
+    assert(getRegA() == 0xF0)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(getFlagC())
+
+    -- Subtract zero: result unchanged
+    setRegA(0xA5)
+    op_sub(0x00)
+    assert(getRegA() == 0xA5)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+end)
+
+test.unit "vm - SBC" (function()
+    -- Normal subtraction with carry clear: 0x35 - 0x12 = 0x23
+    setRegA(0x35)
+    resetFlagC()
+    op_sbc(0x12)
+    assert(getRegA() == 0x23)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- Carry-in contributes to subtraction: 0x35 - 0x12 - 1 = 0x22
+    setRegA(0x35)
+    setFlagC()
+    op_sbc(0x12)
+    assert(getRegA() == 0x22)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- Half-borrow caused by carry-in: 0x10 - 0x00 - 1 = 0x0F
+    setRegA(0x10)
+    setFlagC()
+    op_sbc(0x00)
+    assert(getRegA() == 0x0F)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(getFlagH())
+    assert(not getFlagC())
+
+    -- Full borrow: 0x00 - 0x00 - 1 = 0xFF
+    setRegA(0x00)
+    setFlagC()
+    op_sbc(0x00)
+    assert(getRegA() == 0xFF)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(getFlagH())
+    assert(getFlagC())
+
+    -- Zero result: 0x01 - 0x00 - 1 = 0x00
+    setRegA(0x01)
+    setFlagC()
+    op_sbc(0x00)
+    assert(getRegA() == 0x00)
+    assert(getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- Edge case: 0x00 - 0xFF - 1 = 0x00 modulo 256
+    setRegA(0x00)
+    setFlagC()
+    op_sbc(0xFF)
+    assert(getRegA() == 0x00)
+    assert(getFlagZ())
+    assert(getFlagN())
+    assert(getFlagH())
+    assert(getFlagC())
+
+    -- Carry clear: 0xFF - 0x01 = 0xFE
+    setRegA(0xFF)
+    resetFlagC()
+    op_sbc(0x01)
+    assert(getRegA() == 0xFE)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+end)
+
+-- ADD n SUB n ADC n SBC n, 0xC6 0xD6 0xCE 0xDE
+opcodes[0xC6 + 1] = function() op_add(getOpcode()); idle(1) end
+opcodes[0xD6 + 1] = function() op_sub(getOpcode()); idle(1) end
+opcodes[0xCE + 1] = function() op_adc(getOpcode()); idle(1) end
+opcodes[0xDE + 1] = function() op_sbc(getOpcode()); idle(1) end
+
+test.unit "vm - n arithmetic" (function()
+    -- ADD A, d8: 0x12 + 0x23 = 0x35
+    resetVM()
+    testRun { 0xC6, 0x23 }
+    setRegA(0x12)
+    resetFlagZ(); resetFlagN(); resetFlagH(); resetFlagC()
+    resetVM()
+    setRegA(0x12)
+    testRun { 0xC6, 0x23 }
+    assert(getRegA() == 0x35)
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- SUB d8: 0x10 - 0x01 = 0x0F
+    resetVM()
+    setRegA(0x10)
+    testRun { 0xD6, 0x01 }
+    assert(getRegA() == 0x0F)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(getFlagH())
+    assert(not getFlagC())
+
+    -- ADC A, d8: 0x0F + 0x00 + carry = 0x10
+    resetVM()
+    setRegA(0x0F)
+    setFlagC()
+    testRun { 0xCE, 0x00 }
+    assert(getRegA() == 0x10)
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(getFlagH())
+    assert(not getFlagC())
+
+    -- SBC A, d8: 0x10 - 0x00 - carry = 0x0F
+    resetVM()
+    setRegA(0x10)
+    setFlagC()
+    testRun { 0xDE, 0x00 }
+    assert(getRegA() == 0x0F)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(getFlagH())
+    assert(not getFlagC())
+end)
+
 ----------------------
 -- prefixed opcodes --
 ----------------------
