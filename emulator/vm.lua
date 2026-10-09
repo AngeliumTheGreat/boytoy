@@ -67,6 +67,15 @@ local function setRegHL(x) x=x%0x10000; reg_H=math.floor(x/256); reg_L=x%256 end
 local function getIndRegHL() idle(1); return getMem(getRegHL()) end
 local function setIndRegHL(x) idle(1); setMem(getRegHL(), x) end
 
+local function setFlagZ() setRegF(bit.bor(getRegF(), 0x40)) end
+local function setFlagN() setRegF(bit.bor(getRegF(), 0x20)) end
+local function setFlagH() setRegF(bit.bor(getRegF(), 0x10)) end
+local function setFlagC() setRegF(bit.bor(getRegF(), 0x08)) end
+local function resetFlagZ() setRegF(bit.band(getRegF(), 0xBF)) end
+local function resetFlagN() setRegF(bit.band(getRegF(), 0xDF)) end
+local function resetFlagH() setRegF(bit.band(getRegF(), 0xEF)) end
+local function resetFlagC() setRegF(bit.band(getRegF(), 0xF7)) end
+
 -- reset
 local function resetVM()
     for i=1,0x10000 do memory[i]=0 end
@@ -75,10 +84,31 @@ local function resetVM()
 end
 
 test.unit "vm - registers" (function()
+    resetVM()
     setRegB(3)
     assert(getRegB() == 3)
     setRegBC(0x1234)
     assert(getRegBC() == 0x1234)
+    resetVM()
+end)
+
+test.unit "vm - flags" (function()
+    resetVM()
+    assert(getRegF() == 0x00)
+    setFlagH()
+    setFlagZ()
+    assert(getRegF() == 0x50)
+    resetFlagZ()
+    assert(getRegF() == 0x10)
+    setFlagZ()
+    setFlagC()
+    setFlagN()
+    assert(getRegF() == 0x78)
+    resetFlagZ(); assert(getRegF() == 0x38)
+    resetFlagN(); assert(getRegF() == 0x18)
+    resetFlagH(); assert(getRegF() == 0x08)
+    resetFlagC(); assert(getRegF() == 0x00)
+    resetVM()
 end)
 
 -------------------------------------
@@ -99,11 +129,11 @@ vm.cycle = cycle
 -- sets the program it is passed as the rom and runs it. replaces fully, so rom
 -- must be reset afterwards. only runs until the rom ends, so it's good to keep it short
 local function testRun(program)
-    memory = program
-    local c = coroutine.wrap(function() while true do _cycle() end end)
-    while pc <= #program + 1 do
-        pcall(c)
+    for i=1, #memory do
+        memory[i] = program[i] or 0x00
     end
+    local c = coroutine.wrap(function() while true do _cycle() end end)
+    while pcall(c) do end
 end
 
 -- time how many M-cycles it takes an opcode to run
@@ -197,7 +227,7 @@ test.unit "vm - LD" (function()
     setRegHL(0x0002); setRegA(0x67); setRegB(0x00);
     -- LD [HL], A; LD B, [HL]; NOP (which gets overwritten)
     testRun {0x77; 0x46; 0x00}
-    assert(getRegB() == getRegA())
+    assert(getRegB(), getRegA())
     -- indirect get / set instructions take one extra M-cycle
     assert(timeInstruction(0x77) == 2 and timeInstruction(0x46) == 2)
 

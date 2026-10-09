@@ -64,11 +64,11 @@ function test.assert_error(func, ...)
 end
 
 function test.assert_equal(a, b)
-   assert(equal(a, b))
+   assert(equal(a, b), string.format("values are unequal: got %q and %q", a, b))
 end
 
 function test.assert_unequal(a, b)
-   assert(not equal(a, b))
+   assert(not equal(a, b), string.format("values are equal: got %q and %q", a, b))
 end
 
 function test.label(content)
