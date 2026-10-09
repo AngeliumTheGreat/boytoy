@@ -59,10 +59,10 @@ local function setRegE(x) reg_E=x end
 local function setRegH(x) reg_H=x end
 local function setRegL(x) reg_L=x end
 
-local function setRegAF(x) reg_A=math.floor(x/256); reg_F=x%256 end
-local function setRegBC(x) reg_B=math.floor(x/256); reg_C=x%256 end
-local function setRegDE(x) reg_D=math.floor(x/256); reg_E=x%256 end
-local function setRegHL(x) reg_H=math.floor(x/256); reg_L=x%256 end
+local function setRegAF(x) x=x%0x10000; reg_A=math.floor(x/256); reg_F=x%256 end
+local function setRegBC(x) x=x%0x10000; reg_B=math.floor(x/256); reg_C=x%256 end
+local function setRegDE(x) x=x%0x10000; reg_D=math.floor(x/256); reg_E=x%256 end
+local function setRegHL(x) x=x%0x10000; reg_H=math.floor(x/256); reg_L=x%256 end
 
 local function getIndRegHL() idle(1); return getMem(getRegHL()) end
 local function setIndRegHL(x) idle(1); setMem(getRegHL(), x) end
@@ -145,7 +145,37 @@ opcodes[0x32+1] = function() setMem(getRegHL(), getRegA()); setRegHL(getRegHL()-
 
 -- LD, 0xX6
 opcodes[0x06+1] = function() setRegB(getOpcode()); idle(1) end
+opcodes[0x16+1] = function() setRegD(getOpcode()); idle(1) end
+opcodes[0x26+1] = function() setRegH(getOpcode()); idle(1) end
+opcodes[0x36+1] = function() setMem(getRegHL(),getOpcode()); idle(1) end
 
+-- LD, 0xXA
+opcodes[0x0A+1] = function() setRegA(getMem(getRegBC())); idle(1) end
+opcodes[0x1A+1] = function() setRegA(getMem(getRegDE())); idle(1) end
+opcodes[0x2A+1] = function() setRegA(getMem(getRegHL())); setRegHL(getRegHL()+1); idle(1) end
+opcodes[0x3A+1] = function() setRegA(getMem(getRegHL())); setRegHL(getRegHL()-1); idle(1) end
+
+-- LD, 0xXE
+opcodes[0x0E+1] = function() setRegC(getOpcode()); idle(1) end
+opcodes[0x1E+1] = function() setRegE(getOpcode()); idle(1) end
+opcodes[0x2E+1] = function() setRegL(getOpcode()); idle(1) end
+opcodes[0x3E+1] = function() setRegA(getOpcode()); idle(1) end
+
+-- LDH, 0xE0, 0xF0, 0xE2, 0xF2
+opcodes[0xE0+1] = function() setMem(getOpcode()+0xFF00,getRegA()); idle(2) end
+opcodes[0xF0+1] = function() setRegA(getMem(getOpcode()+0xFF00)); idle(2) end
+opcodes[0xE2+1] = function() setMem(getRegC()+0xFF00,getRegA()); idle(2) end
+opcodes[0xF2+1] = function() setRegA(getMem(getRegC()+0xFF00)); idle(2) end
+
+-- LD, 0xEA, 0xFA
+opcodes[0xEA+1] = function()
+    local lo = getOpcode()
+    local hi = getOpcode()
+    setMem(hi * 0x100 + lo, getRegA()); idle(3) end
+opcodes[0xFA+1] = function()
+    local lo = getOpcode()
+    local hi = getOpcode()
+    setRegA(getMem(hi * 0x100 + lo)); idle(3) end
 
 -- DI, disable interrupts, 0xF3
 
