@@ -219,6 +219,32 @@ opcodes[0xFA+1] = function()
 
 opcodes[0xF3+1] = function() IME=0 end
 
+-- AND, 0xA0 to 0xA7
+
+local function op_and(src)
+    resetFlagN(); setFlagH(); resetFlagC()
+    local r = bit.band(getRegA(), src())
+    setRegA(r)
+    if r == 0 then
+        setFlagZ()
+    else
+        resetFlagZ()
+    end
+end
+
+for i, src in ipairs { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA } do
+    opcodes[0xA0 + (i-1) + 1] = function() op_and(src) end
+end
+
+opcodes[0xE6 + 1] = function() idle(1); op_and(getOpcode) end
+
+test.unit "vm - AND" (function()
+    test.label "timings"
+    test.assert_equal(timeInstruction(0xA2), 1)
+    test.assert_equal(timeInstruction(0xA6), 2)
+    test.assert_equal(timeInstruction(0xE6), 2)
+end)
+
 ---------------------
 -- unit test silly --
 ---------------------
