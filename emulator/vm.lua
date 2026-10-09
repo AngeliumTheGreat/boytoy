@@ -75,6 +75,10 @@ local function resetFlagZ() setRegF(bit.band(getRegF(), 0x7F)) end
 local function resetFlagN() setRegF(bit.band(getRegF(), 0xBF)) end
 local function resetFlagH() setRegF(bit.band(getRegF(), 0xDF)) end
 local function resetFlagC() setRegF(bit.band(getRegF(), 0xEF)) end
+local function getFlagZ() return bit.band(getRegF(), 0x80) ~= 0 end
+local function getFlagN() return bit.band(getRegF(), 0x40) ~= 0 end
+local function getFlagH() return bit.band(getRegF(), 0x20) ~= 0 end
+local function getFlagC() return bit.band(getRegF(), 0x10) ~= 0 end
 
 -- reset
 local function resetVM()
@@ -102,12 +106,15 @@ test.unit "vm - flags" (function()
     resetFlagZ()
     assert(getRegF() == 0x20)
     setFlagZ()
+    assert(getFlagZ())
     setFlagC()
     setFlagN()
+    assert(getFlagN())
     assert(getRegF() == 0xF0)
     resetFlagZ(); assert(getRegF() == 0x70)
     resetFlagN(); assert(getRegF() == 0x30)
     resetFlagH(); assert(getRegF() == 0x10)
+    assert(not getFlagH())
     resetFlagC(); assert(getRegF() == 0x00)
     resetVM()
 end)
