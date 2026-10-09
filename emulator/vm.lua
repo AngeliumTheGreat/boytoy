@@ -778,6 +778,95 @@ test.unit "vm - Rotate" (function()
     assert(not getFlagC())
 end)
 
+local function op_add(value)
+    local a = getRegA()
+    local result = a + value
+
+    setRegA(result % 0x100)
+    setFlags(
+        result % 0x100 == 0,
+        false,
+        (a % 0x10) + (value % 0x10) > 0x0F,
+        result > 0xFF
+    )
+end
+
+-- ADD, 0x80-0x87
+opcodes[0x80 + 1] = function() op_add(getRegB()) end
+opcodes[0x81 + 1] = function() op_add(getRegC()) end
+opcodes[0x82 + 1] = function() op_add(getRegD()) end
+opcodes[0x83 + 1] = function() op_add(getRegE()) end
+opcodes[0x84 + 1] = function() op_add(getRegH()) end
+opcodes[0x85 + 1] = function() op_add(getRegL()) end
+opcodes[0x86 + 1] = function() op_add(getIndRegHL()) end
+opcodes[0x87 + 1] = function() op_add(getRegA()) end
+
+test.unit "vm - ADD" (function()
+    -- Normal addition: 0x12 + 0x23 = 0x35
+    setRegA(0x12)
+    op_add(0x23)
+    assert(getRegA() == 0x35)
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- Zero result with 8-bit overflow: 0xFF + 0x01 = 0x00
+    setRegA(0xFF)
+    op_add(0x01)
+    assert(getRegA() == 0x00)
+    assert(getFlagZ())
+    assert(not getFlagN())
+    assert(getFlagH())
+    assert(getFlagC())
+
+    -- Half-carry only: 0x0F + 0x01 = 0x10
+    setRegA(0x0F)
+    op_add(0x01)
+    assert(getRegA() == 0x10)
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(getFlagH())
+    assert(not getFlagC())
+
+    -- Carry only: 0xF0 + 0x10 = 0x00
+    -- This also produces zero, so both Z and C are set.
+    setRegA(0xF0)
+    op_add(0x10)
+    assert(getRegA() == 0x00)
+    assert(getFlagZ())
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(getFlagC())
+
+    -- Maximum result without overflow: 0xFE + 0x01 = 0xFF
+    setRegA(0xFE)
+    op_add(0x01)
+    assert(getRegA() == 0xFF)
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- Adding zero to zero: result is zero, no carry
+    setRegA(0x00)
+    op_add(0x00)
+    assert(getRegA() == 0x00)
+    assert(getFlagZ())
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- Half-carry and carry: 0x8F + 0x81 = 0x10
+    setRegA(0x8F)
+    op_add(0x81)
+    assert(getRegA() == 0x10)
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(getFlagH())
+    assert(getFlagC())
+end)
+
 ----------------------
 -- prefixed opcodes --
 ----------------------
