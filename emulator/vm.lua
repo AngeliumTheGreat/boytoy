@@ -7,11 +7,11 @@ local memory = {}
 for i=1,0x10000 do memory[i]=0 end
 
 local function getMem(x) return memory[x+1] end
-local function setMem(x,val) memory[x+1]=val % 0x100 end
+local function setMem(x,val) memory[x+1]=val end
 local function getOpcode()
     local value = memory[pc]
     pc = pc + 1
-    return values
+    return value
 end
 
 -- idle for a certain amount of M-cycles
@@ -118,8 +118,7 @@ end)
 local opcodes = {}
 
 local function _cycle()
-    pc = pc + 1
-    opcodes[memory[pc - 1] + 1]()   -- two offsets because of 0-index to 1-index conversion
+    opcodes[getOpcode() + 1]()
     coroutine.yield()
 end
 
@@ -129,11 +128,20 @@ vm.cycle = cycle
 -- sets the program it is passed as the rom and runs it. replaces fully, so rom
 -- must be reset afterwards. only runs until the rom ends, so it's good to keep it short
 local function testRun(program)
-    for i=1, #memory do
-        memory[i] = program[i] or 0x00
+    for i = 1, #program do
+        memory[i] = program[i]
     end
-    local c = coroutine.wrap(function() while true do _cycle() end end)
-    while pcall(c) do end
+    local c = coroutine.wrap(function()
+        while true do
+            _cycle()
+        end
+    end)
+    for i = 1, #program + 10 do
+        local ok = pcall(c)
+        if not ok then
+            break
+        end
+    end
 end
 
 -- time how many M-cycles it takes an opcode to run
@@ -177,7 +185,7 @@ opcodes[0x32+1] = function() setMem(getRegHL(), getRegA()); setRegHL(getRegHL()-
 opcodes[0x06+1] = function() setRegB(getOpcode()); idle(1) end
 opcodes[0x16+1] = function() setRegD(getOpcode()); idle(1) end
 opcodes[0x26+1] = function() setRegH(getOpcode()); idle(1) end
-opcodes[0x36+1] = function() setMem(getRegHL(),getOpcode()); idle(1) end
+opcodes[0x36+1] = function() setMem(getRegHL(),getOpcode()); idle(2) end
 
 -- LD, 0xXA
 opcodes[0x0A+1] = function() setRegA(getMem(getRegBC())); idle(1) end
@@ -194,8 +202,8 @@ opcodes[0x3E+1] = function() setRegA(getOpcode()); idle(1) end
 -- LDH, 0xE0, 0xF0, 0xE2, 0xF2
 opcodes[0xE0+1] = function() setMem(getOpcode()+0xFF00,getRegA()); idle(2) end
 opcodes[0xF0+1] = function() setRegA(getMem(getOpcode()+0xFF00)); idle(2) end
-opcodes[0xE2+1] = function() setMem(getRegC()+0xFF00,getRegA()); idle(2) end
-opcodes[0xF2+1] = function() setRegA(getMem(getRegC()+0xFF00)); idle(2) end
+opcodes[0xE2+1] = function() setMem(getRegC()+0xFF00,getRegA()); idle(1) end
+opcodes[0xF2+1] = function() setRegA(getMem(getRegC()+0xFF00)); idle(1) end
 
 -- LD, 0xEA, 0xFA
 opcodes[0xEA+1] = function()
@@ -230,6 +238,162 @@ test.unit "vm - LD" (function()
     assert(getRegB(), getRegA())
     -- indirect get / set instructions take one extra M-cycle
     assert(timeInstruction(0x77) == 2 and timeInstruction(0x46) == 2)
+
+    resetVM()
+end)
+
+test.unit "vm - LD loads" (function()
+    -- LD [BC], A
+    resetVM()
+    setRegBC(0xC000); setRegA(0x42)
+    testRun {0x02}
+    assert(getMem(0xC000) == 0x42)
+    assert(timeInstruction(0x02) == 2)
+
+    -- LD [DE], A
+    resetVM()
+    setRegDE(0xC001); setRegA(0x43)
+    testRun {0x12}
+    assert(getMem(0xC001) == 0x43)
+    assert(timeInstruction(0x12) == 2)
+
+    -- LD [HL+], A
+    resetVM()
+    setRegHL(0xC002); setRegA(0x44)
+    testRun {0x22}
+    assert(getMem(0xC002) == 0x44)
+    assert(getRegHL() == 0xC003)
+    assert(timeInstruction(0x22) == 2)
+
+    -- LD [HL-], A
+    resetVM()
+    setRegHL(0xC003); setRegA(0x45)
+    testRun {0x32}
+    assert(getMem(0xC003) == 0x45)
+    assert(getRegHL() == 0xC002)
+    assert(timeInstruction(0x32) == 2)
+
+    -- LD B, d8
+    resetVM()
+    testRun {0x06, 0x12}
+    test.assert_equal(getRegB(),0x12)
+    test.assert_equal(timeInstruction(0x06),2)
+
+    -- LD D, d8
+    resetVM()
+    testRun {0x16, 0x23}
+    assert(getRegD() == 0x23)
+    assert(timeInstruction(0x16) == 2)
+
+    -- LD H, d8
+    resetVM()
+    testRun {0x26, 0x34}
+    assert(getRegH() == 0x34)
+    assert(timeInstruction(0x26) == 2)
+
+    
+    -- LD [HL], d8
+    resetVM()
+    setRegHL(0xC004)
+    testRun {0x36, 0x56}
+    assert(getMem(0xC004) == 0x56)
+    test.assert_equal(timeInstruction(0x36),3)
+    
+    -- LD A, [BC]
+    resetVM()
+    setRegBC(0xC005); setMem(0xC005, 0x67)
+    testRun {0x0A}
+    test.assert_equal(getRegA(),0x67)
+    assert(timeInstruction(0x0A) == 2)
+
+    -- LD A, [DE]
+    resetVM()
+    setRegDE(0xC006); setMem(0xC006, 0x78)
+    testRun {0x1A}
+    assert(getRegA(),0x78)
+    test.assert_equal(timeInstruction(0x1A),2)
+
+    -- LD A, [HL+]
+    resetVM()
+    setRegHL(0xC007); setMem(0xC007, 0x89)
+    testRun {0x2A}
+    assert(getRegA() == 0x89)
+    assert(getRegHL() == 0xC008)
+    assert(timeInstruction(0x2A) == 2)
+
+    -- LD A, [HL-]
+    resetVM()
+    setRegHL(0xC008); setMem(0xC008, 0x9A)
+    testRun {0x3A}
+    assert(getRegA() == 0x9A)
+    assert(getRegHL() == 0xC007)
+    assert(timeInstruction(0x3A) == 2)
+
+    -- LD C, d8
+    resetVM()
+    testRun {0x0E, 0xAB}
+    assert(getRegC() == 0xAB)
+    assert(timeInstruction(0x0E) == 2)
+
+    -- LD E, d8
+    resetVM()
+    testRun {0x1E, 0xBC}
+    assert(getRegE() == 0xBC)
+    assert(timeInstruction(0x1E) == 2)
+
+    -- LD L, d8
+    resetVM()
+    testRun {0x2E, 0xCD}
+    assert(getRegL() == 0xCD)
+    assert(timeInstruction(0x2E) == 2)
+
+    -- LD A, d8
+    resetVM()
+    testRun {0x3E, 0xDE}
+    assert(getRegA() == 0xDE)
+    assert(timeInstruction(0x3E) == 2)
+
+    -- LDH [a8], A
+    resetVM()
+    setRegA(0x5A)
+    testRun {0xE0, 0x80}
+    assert(getMem(0xFF80) == 0x5A)
+    assert(timeInstruction(0xE0) == 3)
+
+    -- LDH A, [a8]
+    resetVM()
+    setMem(0xFF81, 0x6B)
+    testRun {0xF0, 0x81}
+    assert(getRegA() == 0x6B)
+    assert(timeInstruction(0xF0) == 3)
+
+    -- LD [C], A
+    resetVM()
+    setRegC(0x82); setRegA(0x7C)
+    testRun {0xE2}
+    assert(getMem(0xFF82) == 0x7C)
+    assert(timeInstruction(0xE2) == 2)
+
+    -- LD A, [C]
+    resetVM()
+    setRegC(0x83); setMem(0xFF83, 0x8D)
+    testRun {0xF2}
+    assert(getRegA() == 0x8D)
+    assert(timeInstruction(0xF2) == 2)
+
+    -- LD [a16], A
+    resetVM()
+    setRegA(0x9E)
+    testRun {0xEA, 0x00, 0xC0}
+    assert(getMem(0xC000) == 0x9E)
+    assert(timeInstruction(0xEA) == 4)
+
+    -- LD A, [a16]
+    resetVM()
+    setMem(0xC001, 0xAF)
+    testRun {0xFA, 0x01, 0xC0}
+    assert(getRegA() == 0xAF)
+    assert(timeInstruction(0xFA) == 4)
 
     resetVM()
 end)
