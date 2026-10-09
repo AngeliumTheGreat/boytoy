@@ -159,8 +159,10 @@ end
 -- based on how many times it yields
 -- every opcode takes at least one cycle since the vm yields between instructions
 local function timeInstruction(instruction)
-    local instruction = opcodes[instruction + 1]
-    local instruction = coroutine.wrap(instruction)
+    if type(instruction) ~= "function" then
+        instruction = opcodes[instruction + 1]
+    end
+    instruction = coroutine.wrap(instruction)
     local i = 0
     while pcall(instruction) do
         i = i + 1
@@ -363,6 +365,48 @@ test.unit "vm - OR" (function()
     testRun { 0xF6, 0xFF }
     test.assert_equal(getRegA(), 0xFF)
     test.assert_equal(getRegF(), 0x00)
+    resetVM()
+end)
+
+----------------------
+-- prefixed opcodes --
+----------------------
+
+local prefixed_opcodes = {}
+
+opcodes[0xCB+1] = function() idle(1); prefixed_opcodes[getOpcode() + 1]() end
+
+-- BIT, 0xCB 0x40 to 0xCB 0x7F
+
+local function op_bit(mask, src)
+    idle(1); resetFlagN(); setFlagH()
+    if bit.band(src(), mask) == 0 then
+        setFlagZ()
+    else
+        resetFlagZ()
+    end
+end
+
+for i, mask in ipairs { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 } do
+    for j, src in ipairs { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA } do
+        prefixed_opcodes[0x40 + (i-1) * 8 + (j-1) + 1] = function() op_bit(mask, src) end
+    end
+end
+
+test.unit "vm - BIT" (function()
+    test.assert_equal(timeInstruction(prefixed_opcodes[0x40 + 1]), 2)
+    test.assert_equal(timeInstruction(prefixed_opcodes[0x66 + 1]), 3)
+
+    resetVM()
+    setRegE(0x20)
+    -- BIT 2 E
+    testRun { 0xCB, 0x53 }
+    assert(getFlagZ())
+    resetVM()
+    setRegE(0x20)
+    -- BIT 5 E
+    testRun { 0xCB, 0x6B }
+    assert(not getFlagZ())
     resetVM()
 end)
 
