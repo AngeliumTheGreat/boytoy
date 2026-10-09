@@ -786,6 +786,50 @@ local prefixed_opcodes = {}
 
 opcodes[0xCB+1] = function() idle(1); prefixed_opcodes[getOpcode() + 1]() end
 
+-- SWAP, 0x30 to 0x37
+
+local function op_swap(src, dest)
+    local l = src()
+    local h = bit.lshift(l, 4)
+    l = bit.rshift(l, 4)
+    local b = h + l
+    setFlags(b == 0x00, false, false, false)
+    dest(b)
+end
+
+do
+    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
+    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
+
+    for i=1, 8 do
+        prefixed_opcodes[0x30 + (i-1) + 1] = function() op_swap(srcs[i], dests[i]) end
+    end
+end
+
+test.unit "vm - SWAP" (function()
+    test.assert_equal(timeInstruction(prefixed_opcodes[0x37 + 1]), 1)
+    test.assert_equal(timeInstruction(prefixed_opcodes[0x36 + 1]), 3)
+
+    resetVM()
+    setRegL(0xF0); setRegF(0xF0)
+    -- SWAP L
+    testRun { 0xCB, 0x35 }
+    test.assert_equal(getRegL(), 0x0F)
+    test.assert_equal(getRegF(), 0x00)
+    resetVM()
+    setMem(0x300, 0x12); setRegHL(0x300)
+    -- SWAP [HL]
+    testRun { 0xCB, 0x36 }
+    test.assert_equal(getMem(0x300), 0x21)
+    resetVM()
+    setRegB(0x00)
+    -- SWAP B
+    testRun { 0xCB, 0x30 }
+    test.assert_equal(getRegB(), 0x00)
+    test.assert_equal(getRegF(), 0x80)
+    resetVM()
+end)
+
 -- BIT, 0xCB 0x40 to 0xCB 0x7F
 
 local function op_bit(mask, src)
