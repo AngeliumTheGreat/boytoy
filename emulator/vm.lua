@@ -16,7 +16,7 @@ end
 
 -- idle for a certain amount of M-cycles
 local function idle(cycles)
-    for i=1, cycles do
+    for i=1, cycles * 4 do
         coroutine.yield()
     end
 end
@@ -127,7 +127,7 @@ local opcodes = {}
 
 local function _cycle()
     opcodes[getOpcode() + 1]()
-    coroutine.yield()
+    idle(1)
 end
 
 local cycle = coroutine.wrap(function() while true do _cycle() end end)
@@ -163,11 +163,11 @@ local function timeInstruction(instruction)
         instruction = opcodes[instruction + 1]
     end
     instruction = coroutine.wrap(instruction)
-    local i = 0
+    local i = -1
     while pcall(instruction) do
         i = i + 1
     end
-    return i
+    return (i / 4) + 1
 end
 
 -- converts unsigned to signed 8 bit
@@ -891,5 +891,9 @@ test.unit "vm - LD part 2" (function()
 
     resetVM()
 end)
+
+-- return extra goodies
+
+vm.getMem = getMem
 
 return vm
