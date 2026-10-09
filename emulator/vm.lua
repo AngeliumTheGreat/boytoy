@@ -735,16 +735,49 @@ test.unit "vm - RES" (function()
     test.assert_equal(timeInstruction(prefixed_opcodes[0x86 + 1]), 3)
 
     resetVM()
-    setRegH(0xF0)
+    setRegH(0xF0); setRegF(0x80)
     -- RES 6 H; RES 4 H
     testRun { 0xCB, 0xB4, 0xCB, 0xA4 }
     test.assert_equal(getRegH(), 0xA0)
+    test.assert_equal(getRegF(), 0x80)
     resetVM()
     setRegHL(0x0200); setMem(0x200, 0x18)
     -- RES 4 [HL]
     testRun { 0xCB, 0xA6 }
     test.assert_equal(getMem(0x200), 0x08)
     resetVM()
+end)
+
+-- SET, 0xCB 0xC0 to 0xCB 0xFF
+
+local function op_set(mask, src, dest)
+    dest(bit.bor(mask, src()))
+end
+
+for i, mask in ipairs { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 } do
+    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
+    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
+
+    for j=1, 8 do
+        prefixed_opcodes[0xC0 + (i-1) * 8 + (j-1) + 1] = function() op_set(mask, srcs[j], dests[j]) end
+    end
+end
+
+test.unit "vm - RES" (function()
+    test.assert_equal(timeInstruction(prefixed_opcodes[0xC2 + 1]), 1)
+    test.assert_equal(timeInstruction(prefixed_opcodes[0xC6 + 1]), 3)
+
+    resetVM()
+    setRegF(0x30)
+    -- SET 4 C; SET 2 C
+    testRun { 0xCB, 0xE2, 0xCB, 0xD2 }
+    test.assert_equal(getRegC(), 0x14)
+    test.assert_equal(getRegF(), 0x30)
+    resetVM()
+    setRegHL(0x0100)
+    -- SET 6 [HL]
+    testRun { 0xCB, 0xF6 }
+    test.assert_equal(getMem(0x0100), 0x40)
 end)
 
 ---------------------
