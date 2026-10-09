@@ -368,48 +368,6 @@ test.unit "vm - OR" (function()
     resetVM()
 end)
 
-----------------------
--- prefixed opcodes --
-----------------------
-
-local prefixed_opcodes = {}
-
-opcodes[0xCB+1] = function() idle(1); prefixed_opcodes[getOpcode() + 1]() end
-
--- BIT, 0xCB 0x40 to 0xCB 0x7F
-
-local function op_bit(mask, src)
-    idle(1); resetFlagN(); setFlagH()
-    if bit.band(src(), mask) == 0 then
-        setFlagZ()
-    else
-        resetFlagZ()
-    end
-end
-
-for i, mask in ipairs { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 } do
-    for j, src in ipairs { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA } do
-        prefixed_opcodes[0x40 + (i-1) * 8 + (j-1) + 1] = function() op_bit(mask, src) end
-    end
-end
-
-test.unit "vm - BIT" (function()
-    test.assert_equal(timeInstruction(prefixed_opcodes[0x40 + 1]), 2)
-    test.assert_equal(timeInstruction(prefixed_opcodes[0x66 + 1]), 3)
-
-    resetVM()
-    setRegE(0x20)
-    -- BIT 2 E
-    testRun { 0xCB, 0x53 }
-    assert(getFlagZ())
-    resetVM()
-    setRegE(0x20)
-    -- BIT 5 E
-    testRun { 0xCB, 0x6B }
-    assert(not getFlagZ())
-    resetVM()
-end)
-
 -- JP nn, 0xC3
 opcodes[0xC3+1] = function()
     local nn_lsb = getOpcode()
@@ -711,6 +669,48 @@ test.unit "vm - CP" (function()
     assert(getFlagN())
     assert(not getFlagH())
     assert(not getFlagC())
+end)
+
+----------------------
+-- prefixed opcodes --
+----------------------
+
+local prefixed_opcodes = {}
+
+opcodes[0xCB+1] = function() idle(1); prefixed_opcodes[getOpcode() + 1]() end
+
+-- BIT, 0xCB 0x40 to 0xCB 0x7F
+
+local function op_bit(mask, src)
+    idle(1); resetFlagN(); setFlagH()
+    if bit.band(src(), mask) == 0 then
+        setFlagZ()
+    else
+        resetFlagZ()
+    end
+end
+
+for i, mask in ipairs { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 } do
+    for j, src in ipairs { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA } do
+        prefixed_opcodes[0x40 + (i-1) * 8 + (j-1) + 1] = function() op_bit(mask, src) end
+    end
+end
+
+test.unit "vm - BIT" (function()
+    test.assert_equal(timeInstruction(prefixed_opcodes[0x40 + 1]), 2)
+    test.assert_equal(timeInstruction(prefixed_opcodes[0x66 + 1]), 3)
+
+    resetVM()
+    setRegE(0x20)
+    -- BIT 2 E
+    testRun { 0xCB, 0x53 }
+    assert(getFlagZ())
+    resetVM()
+    setRegE(0x20)
+    -- BIT 5 E
+    testRun { 0xCB, 0x6B }
+    assert(not getFlagZ())
+    resetVM()
 end)
 
 ---------------------
