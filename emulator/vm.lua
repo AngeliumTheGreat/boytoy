@@ -1321,6 +1321,44 @@ test.unit "vm - SWAP" (function()
     resetVM()
 end)
 
+-- SRL, 0x38 to 0x3F
+
+local function op_srl(src, dest)
+    local b = src()
+    setFlags(false, false, false, bit.band(b, 0x01) ~= 0)
+    b = bit.rshift(b, 1)
+    if b == 0x00 then setFlagZ() end
+    dest(b)
+end
+
+do
+    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
+    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
+
+    for i=1, 8 do
+        prefixed_opcodes[0x38 + (i-1) + 1] = function() op_srl(srcs[i], dests[i]) end
+    end
+end
+
+test.unit "vm - SRL" (function()
+    test.assert_equal(timeInstruction(prefixed_opcodes[0x3F + 1]), 1)
+    test.assert_equal(timeInstruction(prefixed_opcodes[0x3E + 1]), 3)
+
+    resetVM()
+    setRegH(0xFF); setRegF(0xF0)
+    -- SRL H
+    testRun { 0xCB, 0x3C }
+    test.assert_equal(getRegH(), 0x7F)
+    test.assert_equal(getRegF(), 0x10)
+    resetVM()
+    setMem(0x200, 0x01); setRegHL(0x200); setRegF(0x20)
+    -- SRL [HL]
+    testRun { 0xCB, 0x3E }
+    test.assert_equal(getMem(0x200), 0x00)
+    test.assert_equal(getRegF(), 0x90)
+    resetVM()
+end)
+
 -- BIT, 0xCB 0x40 to 0xCB 0x7F
 
 local function op_bit(mask, src)
