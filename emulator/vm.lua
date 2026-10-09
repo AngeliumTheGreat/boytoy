@@ -129,11 +129,11 @@ vm.cycle = cycle
 -- sets the program it is passed as the rom and runs it. replaces fully, so rom
 -- must be reset afterwards. only runs until the rom ends, so it's good to keep it short
 local function testRun(program)
-    memory = program
-    local c = coroutine.wrap(function() while true do _cycle() end end)
-    while pc <= #program + 1 do
-        pcall(c)
+    for i=1, #memory do
+        memory[i] = program[i] or 0x00
     end
+    local c = coroutine.wrap(function() while true do _cycle() end end)
+    while pcall(c) do end
 end
 
 -- time how many M-cycles it takes an opcode to run
@@ -197,7 +197,7 @@ test.unit "vm - LD" (function()
     setRegHL(0x0002); setRegA(0x67); setRegB(0x00);
     -- LD [HL], A; LD B, [HL]; NOP (which gets overwritten)
     testRun {0x77; 0x46; 0x00}
-    assert(getRegB() == getRegA())
+    assert(getRegB(), getRegA())
     -- indirect get / set instructions take one extra M-cycle
     assert(timeInstruction(0x77) == 2 and timeInstruction(0x46) == 2)
 
