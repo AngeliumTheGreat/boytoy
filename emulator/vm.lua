@@ -618,6 +618,101 @@ test.unit "vm - JP and JR" (function()
     testLenBuffer = oldTestLenBuffer
 end)
 
+local function op_cp(value)
+    local a = getRegA()
+    local result = a - value
+    if result % 0x100 == 0 then setFlagZ() else resetFlagZ() end
+    setFlagN()
+    if bit.band(a, 0x0F) < bit.band(value, 0x0F) then setFlagH() else resetFlagH() end
+    if a<value then setFlagC() else resetFlagC() end
+end
+
+-- CP r/[HL], 0xB8 - 0xBF
+opcodes[0xB8 + 1] = function() op_cp(getRegB()) end
+opcodes[0xB9 + 1] = function() op_cp(getRegC()) end
+opcodes[0xBA + 1] = function() op_cp(getRegD()) end
+opcodes[0xBB + 1] = function() op_cp(getRegE()) end
+opcodes[0xBC + 1] = function() op_cp(getRegH()) end
+opcodes[0xBD + 1] = function() op_cp(getRegL()) end
+opcodes[0xBE + 1] = function() op_cp(getIndRegHL()) end
+opcodes[0xBF + 1] = function() op_cp(getRegA()) end
+
+-- CP n, 0xFE
+opcodes[0xFE + 1] = function() idle(1); op_cp(getOpcode()) end
+
+test.unit "vm - CP" (function()
+
+    -- Equal values: Z=1, N=1, H=0, C=0
+    setRegA(0x42)
+    resetFlagZ(); resetFlagN(); resetFlagH(); resetFlagC()
+    op_cp(0x42)
+    assert(getRegA() == 0x42)
+    assert(getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- No borrow, nonzero result: Z=0, N=1, H=0, C=0
+    setRegA(0x50)
+    resetFlagZ(); resetFlagN(); resetFlagH(); resetFlagC()
+    op_cp(0x10)
+    assert(getRegA() == 0x50)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- Half-borrow only: Z=0, N=1, H=1, C=0
+    setRegA(0x10)
+    resetFlagZ(); resetFlagN(); resetFlagH(); resetFlagC()
+    op_cp(0x01)
+    assert(getRegA() == 0x10)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(getFlagH())
+    assert(not getFlagC())
+
+    -- Full borrow: Z=0, N=1, H=1, C=1
+    setRegA(0x00)
+    resetFlagZ(); resetFlagN(); resetFlagH(); resetFlagC()
+    op_cp(0x01)
+    assert(getRegA() == 0x00)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(getFlagH())
+    assert(getFlagC())
+
+    -- Full borrow without half-borrow: Z=0, N=1, H=0, C=1
+    setRegA(0x10)
+    resetFlagZ(); resetFlagN(); resetFlagH(); resetFlagC()
+    op_cp(0x20)
+    assert(getRegA() == 0x10)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(getFlagC())
+
+    -- Maximum value compared with zero: no borrow
+    setRegA(0xFF)
+    resetFlagZ(); resetFlagN(); resetFlagH(); resetFlagC()
+    op_cp(0x00)
+    assert(getRegA() == 0xFF)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- Zero compared with zero
+    setRegA(0x00)
+    resetFlagZ(); resetFlagN(); resetFlagH(); resetFlagC()
+    op_cp(0x00)
+    assert(getRegA() == 0x00)
+    assert(getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+end)
+
 ---------------------
 -- unit test silly --
 ---------------------
@@ -641,7 +736,7 @@ test.unit "vm - LD" (function()
     resetVM()
 end)
 
-test.unit "vm - LD loads" (function()
+test.unit "vm - LD part 2" (function()
     -- LD [BC], A
     resetVM()
     setRegBC(0xC000); setRegA(0x42)
