@@ -678,32 +678,49 @@ test.unit "vm - CP" (function()
     assert(not getFlagC())
 end)
 
+local function op_rl(value)
+    local b7 = bit.band(value,0x80) ~= 0
+    local C = getFlagC() and 1 or 0
+    local result = (bit.lshift(value,1)+C)%0x100
+    setFlags(result == 0, false, false, b7)
+    return result
+end
+local function op_rr(value)
+    local b0 = bit.band(value,0x01)
+    local C = getFlagC() and 1 or 0
+    local result = (bit.rshift(value,1)+bit.lshift(C,7))%0x100
+    setFlags(result == 0, false, false, b0==1)
+    return result
+end
+local function op_rlc(value)
+    local b7 = bit.band(value,0x80) ~= 0
+    local result = (bit.lshift(value,1)+(b7 and 1 or 0))%0x100
+    setFlags(result == 0, false, false, b7)
+    return result
+end
+local function op_rrc(value)
+    local b0 = bit.band(value,0x01)
+    local result = (bit.rshift(value,1)+bit.lshift(b0,7))%0x100
+    setFlags(result == 0, false, false, b0==1)
+    return result
+end
+
 -- RLCA, RLA, RRCA, RRA, 0x07 0x17 0x0F 0x1F
 opcodes[0x07 + 1] = function()
-    local a = getRegA()
-    local b7 = bit.band(a,0x80) ~= 0
-    setFlags(false, false, false, b7)
-    setRegA((bit.lshift(a,1)+(b7 and 1 or 0))%0x100) 
+    setRegA(op_rlc(getRegA()))
+    resetFlagZ()
 end
 opcodes[0x17 + 1] = function()
-    local a = getRegA()
-    local b7 = bit.band(a,0x80) ~= 0
-    local C = getFlagC() and 1 or 0
-    setFlags(false, false, false, b7)
-    setRegA((bit.lshift(a,1)+C)%0x100) 
+    setRegA(op_rl(getRegA()))
+    resetFlagZ()
 end
 opcodes[0x0F + 1] = function()
-    local a = getRegA()
-    local b0 = bit.band(a,0x01)
-    setFlags(false, false, false, b0==1)
-    setRegA((bit.rshift(a,1)+bit.lshift(b0,7))%0x100) 
+    setRegA(op_rrc(getRegA()))
+    resetFlagZ()
 end
 opcodes[0x1F + 1] = function()
-    local a = getRegA()
-    local b0 = bit.band(a,0x01)
-    local C = getFlagC() and 1 or 0
-    setFlags(false, false, false, b0==1)
-    setRegA((bit.rshift(a,1)+bit.lshift(C,7))%0x100) 
+    setRegA(op_rr(getRegA()))
+    resetFlagZ()
 end
 
 test.unit "vm - Rotate" (function()
@@ -1421,6 +1438,8 @@ test.unit "vm - SET" (function()
     testRun { 0xCB, 0xF6 }
     test.assert_equal(getMem(0x0100), 0x40)
 end)
+
+-- ROTATES idk fuck you, you can read
 
 ---------------------
 -- unit test silly --
