@@ -195,11 +195,7 @@ end
 -- opcodes --
 -------------
 
-local function op_nop() end
-
-for i=1, 0x100 do
-    table.insert(opcodes, op_nop)
-end
+opcodes[0x00+1] = function() end
 
 -- LD, 0x40 to 0x7F
 
