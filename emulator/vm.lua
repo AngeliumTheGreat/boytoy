@@ -81,6 +81,9 @@ local function getFlagN() return bit.band(getRegF(), 0x40) ~= 0 end
 local function getFlagH() return bit.band(getRegF(), 0x20) ~= 0 end
 local function getFlagC() return bit.band(getRegF(), 0x10) ~= 0 end
 
+local function setSP(x) sp = x end
+local function getSP() return sp end
+
 local function setFlags(z, n, h, c)
     local f = 0
     if z then f = f + 0x80 end
@@ -1208,6 +1211,50 @@ test.unit "vm - n arithmetic" (function()
     assert(getFlagN())
     assert(getFlagH())
     assert(not getFlagC())
+end)
+
+-- 16-bit INC
+
+local function op_inc_16(src, dest)
+    idle(1)
+    dest(bit.band(src() + 1, 0xFFFF))
+end
+
+opcodes[0x03 + 1] = function() op_inc_16(getRegBC, setRegBC) end
+opcodes[0x13 + 1] = function() op_inc_16(getRegDE, setRegDE) end
+opcodes[0x23 + 1] = function() op_inc_16(getRegHL, setRegHL) end
+opcodes[0x33 + 1] = function() op_inc_16(getSP, setSP) end
+
+local function op_dec_16(src, dest)
+    idle(1)
+    local b = src()
+    dest(b == 0 and 0xFFFF or b - 1)
+end
+
+opcodes[0x0B + 1] = function() op_dec_16(getRegBC, setRegBC) end
+opcodes[0x1B + 1] = function() op_dec_16(getRegDE, setRegDE) end
+opcodes[0x2B + 1] = function() op_dec_16(getRegHL, setRegHL) end
+opcodes[0x3B + 1] = function() op_dec_16(getSP, setSP) end
+
+test.unit "vm - 16 bit INC and DEC" (function()
+    test.assert_equal(timeInstruction(0x13), 2)
+    test.assert_equal(timeInstruction(0x1B), 2)
+
+    test.label "INC"
+    resetVM()
+    setRegBC(0x0200)
+    -- INC BC, INC BC
+    testRun { 0x03, 0x03 }
+    test.assert_equal(getRegBC(), 0x0202)
+
+    test.label "DEC"
+    resetVM()
+    setRegHL(0x0002); setRegF(0x40)
+    -- DEC HL, DEC HL, DEC HL
+    testRun { 0x2B, 0x2B, 0x2B }
+    test.assert_equal(getRegHL(), 0xFFFF)
+    test.assert_equal(getRegF(), 0x40)
+    resetVM()
 end)
 
 ----------------------
