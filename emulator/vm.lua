@@ -1312,6 +1312,61 @@ opcodes[0xF9 + 1] = function()
     idle(1)
 end
 
+test.unit "vm - LD 16-bit instructions" (function()
+    -- LD BC, 0x1234
+    resetVM()
+    testRun({0x01, 0x34, 0x12})
+    assert(getRegBC() == 0x1234)
+
+    -- LD DE, 0x5678
+    resetVM()
+    testRun({0x11, 0x78, 0x56})
+    assert(getRegDE() == 0x5678)
+
+    -- LD HL, 0xABCD
+    resetVM()
+    testRun({0x21, 0xCD, 0xAB})
+    assert(getRegHL() == 0xABCD)
+
+    -- LD SP, 0xFFFE
+    resetVM()
+    testRun({0x31, 0xFE, 0xFF})
+    assert(getSP() == 0xFFFE)
+
+    -- LD (0xC000), SP; SP = 0x1234
+    resetVM()
+    setSP(0x1234)
+    testRun({0x08, 0x00, 0xC0})
+    assert(getMem(0xC000) == 0x34)
+    assert(getMem(0xC001) == 0x12)
+
+    -- LD HL, SP+e8; SP = 0xFFF8, offset = +8
+    resetVM()
+    setSP(0xFFF8)
+    testRun({0xF8, 0x08})
+    assert(getRegHL() == 0x0000)
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(getFlagH())
+    assert(getFlagC())
+
+    -- LD HL, SP+e8; SP = 0x0001, offset = -1 (0xFF)
+    resetVM()
+    setSP(0x0001)
+    testRun({0xF8, 0xFF})
+    assert(getRegHL() == 0x0000)
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(getFlagH())
+    assert(getFlagC())
+
+    -- LD SP, HL
+    resetVM()
+    setRegHL(0xBEEF)
+    testRun({0xF9})
+    assert(getSP() == 0xBEEF)
+end)
+
 ----------------------
 -- prefixed opcodes --
 ----------------------
