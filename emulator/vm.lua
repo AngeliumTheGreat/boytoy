@@ -51,19 +51,19 @@ local function getRegBC() return (256*reg_B+reg_C) end
 local function getRegDE() return (256*reg_D+reg_E) end
 local function getRegHL() return (256*reg_H+reg_L) end
 
-local function setRegA(x) reg_A=x%0x100 end
+local function setRegA(x) reg_A=x end
 local function setRegF(x) reg_F=bit.band(x, 0xF0) end
-local function setRegB(x) reg_B=x%0x100 end
-local function setRegC(x) reg_C=x%0x100 end
-local function setRegD(x) reg_D=x%0x100 end
-local function setRegE(x) reg_E=x%0x100 end
-local function setRegH(x) reg_H=x%0x100 end
-local function setRegL(x) reg_L=x%0x100 end
+local function setRegB(x) reg_B=x end
+local function setRegC(x) reg_C=x end
+local function setRegD(x) reg_D=x end
+local function setRegE(x) reg_E=x end
+local function setRegH(x) reg_H=x end
+local function setRegL(x) reg_L=x end
 
-local function setRegAF(x) x=x%0x10000; reg_A=math.floor(x/256); reg_F = bit.band(x % 256, 0xF0) end
-local function setRegBC(x) x=x%0x10000; reg_B=math.floor(x/256); reg_C=x%256 end
-local function setRegDE(x) x=x%0x10000; reg_D=math.floor(x/256); reg_E=x%256 end
-local function setRegHL(x) x=x%0x10000; reg_H=math.floor(x/256); reg_L=x%256 end
+local function setRegAF(x) x=x; reg_A=math.floor(x/256); reg_F = bit.band(x % 256, 0xF0) end
+local function setRegBC(x) x=x; reg_B=math.floor(x/256); reg_C=x%256 end
+local function setRegDE(x) x=x; reg_D=math.floor(x/256); reg_E=x%256 end
+local function setRegHL(x) x=x; reg_H=math.floor(x/256); reg_L=x%256 end
 
 local function getIndRegHL() idle(1); return getMem(getRegHL()) end
 local function setIndRegHL(x) idle(1); setMem(getRegHL(), x) end
