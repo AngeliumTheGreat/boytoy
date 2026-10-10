@@ -1210,6 +1210,65 @@ test.unit "vm - n arithmetic" (function()
     assert(not getFlagC())
 end)
 
+-- LD 16-bit
+opcodes[0x01 + 1] = function() 
+    local nn_lsb = getOpcode()
+    local nn_msb = getOpcode()
+    local nn = 256*nn_msb + nn_lsb
+    setRegBC(nn)
+    idle(2)
+end
+opcodes[0x11 + 1] = function() 
+    local nn_lsb = getOpcode()
+    local nn_msb = getOpcode()
+    local nn = 256*nn_msb + nn_lsb
+    setRegDE(nn)
+    idle(2)
+end
+opcodes[0x21 + 1] = function() 
+    local nn_lsb = getOpcode()
+    local nn_msb = getOpcode()
+    local nn = 256*nn_msb + nn_lsb
+    setRegHL(nn)
+    idle(2)
+end
+opcodes[0x31 + 1] = function() 
+    local nn_lsb = getOpcode()
+    local nn_msb = getOpcode()
+    local nn = 256*nn_msb + nn_lsb
+    setSP(nn)
+    idle(2)
+end
+
+opcodes[0x08 + 1] = function()
+    local nn_lsb = getOpcode()
+    local nn_msb = getOpcode()
+    local nn = 256 * nn_msb + nn_lsb
+    local sp = getSP()
+
+    setMem(nn, sp % 0x100)
+    setMem((nn + 1) % 0x10000, math.floor(sp / 0x100))
+    idle(4)
+end
+
+opcodes[0xF8 + 1] = function()
+    local offset = getOpcode()
+    local sp = getSP()
+    local result = (sp + toSigned8(offset)) % 0x10000
+    setFlags(
+        false,
+        false,
+        (sp % 0x10) + (offset % 0x10) > 0x0F,
+        (sp % 0x100) + offset > 0xFF
+    )
+    setRegHL(result)
+    idle(2)
+end
+opcodes[0xF9 + 1] = function() 
+    setSP(getRegHL())
+    idle(1)
+end
+
 ----------------------
 -- prefixed opcodes --
 ----------------------
