@@ -1375,6 +1375,46 @@ local prefixed_opcodes = {}
 
 opcodes[0xCB+1] = function() idle(1); prefixed_opcodes[getOpcode() + 1]() end
 
+-- RLC
+do
+    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
+    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
+
+    for i=1, 8 do
+        prefixed_opcodes[0x00 + (i-1) + 1] = function() op_rlc(srcs[i], dests[i]) end
+    end
+end
+
+-- RRC
+do
+    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
+    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
+
+    for i=1, 8 do
+        prefixed_opcodes[0x08 + (i-1) + 1] = function() op_rrc(srcs[i], dests[i]) end
+    end
+end
+
+-- RL
+do
+    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
+    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
+
+    for i=1, 8 do
+        prefixed_opcodes[0x10 + (i-1) + 1] = function() op_rl(srcs[i], dests[i]) end
+    end
+end
+
+-- RR
+do
+    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
+    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
+
+    for i=1, 8 do
+        prefixed_opcodes[0x18 + (i-1) + 1] = function() op_rrc(srcs[i], dests[i]) end
+    end
+end
+
 -- SLA, 0x20 to 0x27
 
 local function op_sla(src, dest)
