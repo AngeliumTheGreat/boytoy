@@ -101,37 +101,6 @@ local function resetVM()
     IME = 0
 end
 
-test.unit "vm - registers" (function()
-    resetVM()
-    setRegB(3)
-    assert(getRegB() == 3)
-    setRegBC(0x1234)
-    assert(getRegBC() == 0x1234)
-    resetVM()
-end)
-
-test.unit "vm - flags" (function()
-    resetVM()
-    assert(getRegF() == 0x00)
-    setFlagH()
-    setFlagZ()
-    assert(getRegF() == 0xA0)
-    resetFlagZ()
-    assert(getRegF() == 0x20)
-    setFlagZ()
-    assert(getFlagZ())
-    setFlagC()
-    setFlagN()
-    assert(getFlagN())
-    assert(getRegF() == 0xF0)
-    resetFlagZ(); assert(getRegF() == 0x70)
-    resetFlagN(); assert(getRegF() == 0x30)
-    resetFlagH(); assert(getRegF() == 0x10)
-    assert(not getFlagH())
-    resetFlagC(); assert(getRegF() == 0x00)
-    resetVM()
-end)
-
 -------------------------------------
 -- core vm loop + helper functions --
 -------------------------------------
@@ -268,28 +237,6 @@ end
 
 opcodes[0xE6 + 1] = function() idle(1); op_and(getOpcode) end
 
-test.unit "vm - AND" (function()
-    test.label "timings"
-    test.assert_equal(timeInstruction(0xA2), 1)
-    test.assert_equal(timeInstruction(0xA6), 2)
-    test.assert_equal(timeInstruction(0xE6), 2)
-
-    test.label "arithmetic and flags"
-    resetVM()
-    setRegA(0x88); setRegB(0x0F)
-    -- AND B
-    testRun { 0xA0 }
-    test.assert_equal(getRegA(), 0x08)
-    test.assert_equal(getRegF(), 0x20)
-    resetVM()
-    setRegA(0x12)
-    -- AND n8; 0x00
-    testRun { 0xE6, 0x00 }
-    test.assert_equal(getRegA(), 0x00)
-    test.assert_equal(getRegF(), 0xA0)
-    resetVM()
-end)
-
 -- XOR, 0xA8 to 0xAF, 0xEE
 
 local function op_xor(src)
@@ -309,28 +256,6 @@ end
 
 opcodes[0xEE + 1] = function() idle(1); op_xor(getOpcode) end
 
-test.unit "vm - XOR" (function()
-    test.label "timings"
-    test.assert_equal(timeInstruction(0xAA), 1)
-    test.assert_equal(timeInstruction(0xAE), 2)
-    test.assert_equal(timeInstruction(0xEE), 2)
-
-    test.label "arithmetic and flags"
-    resetVM()
-    setRegA(0xAA); setRegD(0x0F)
-    -- XOR D
-    testRun { 0xAA }
-    test.assert_equal(getRegA(), 0xA5)
-    test.assert_equal(getRegF(), 0x00)
-    resetVM()
-    setRegA(0x0F)
-    -- XOR n8; 0x0F
-    testRun { 0xEE, 0x0F }
-    test.assert_equal(getRegA(), 0x00)
-    test.assert_equal(getRegF(), 0x80)
-    resetVM()
-end)
-
 -- OR, 0xB0 to 0xB7, 0xF6
 
 local function op_or(src)
@@ -349,33 +274,6 @@ for i, src in ipairs { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, get
 end
 
 opcodes[0xF6 + 1] = function() idle(1); op_or(getOpcode) end
-
-test.unit "vm - OR" (function()
-    test.label "timings"
-    test.assert_equal(timeInstruction(0xB2), 1)
-    test.assert_equal(timeInstruction(0xB6), 2)
-    test.assert_equal(timeInstruction(0xF6), 2)
-
-    test.label "arithmetic and flags"
-    resetVM()
-    setRegA(0x40); setRegH(0x12); setRegF(0x40)
-    -- OR H
-    testRun { 0xB4 }
-    test.assert_equal(getRegA(), 0x52)
-    test.assert_equal(getRegF(), 0x00)
-    resetVM()
-    -- OR B
-    testRun { 0xB0 }
-    test.assert_equal(getRegA(), 0x00)
-    test.assert_equal(getRegF(), 0x80)
-    resetVM()
-    setRegA(0xF0); setRegF(0x10)
-    -- OR n8; 0xFF
-    testRun { 0xF6, 0xFF }
-    test.assert_equal(getRegA(), 0xFF)
-    test.assert_equal(getRegF(), 0x00)
-    resetVM()
-end)
 
 -- JP nn, 0xC3
 opcodes[0xC3+1] = function()
@@ -437,6 +335,492 @@ for opcode, condition in pairs({
         end
     end
 end
+
+local function op_cp(value)
+    local a = getRegA()
+    local result = a - value
+    setFlags(result % 0x100 == 0, true, bit.band(a, 0x0F) < bit.band(value, 0x0F), a<value)
+end
+
+-- CP r/[HL], 0xB8 - 0xBF
+opcodes[0xB8 + 1] = function() op_cp(getRegB()) end
+opcodes[0xB9 + 1] = function() op_cp(getRegC()) end
+opcodes[0xBA + 1] = function() op_cp(getRegD()) end
+opcodes[0xBB + 1] = function() op_cp(getRegE()) end
+opcodes[0xBC + 1] = function() op_cp(getRegH()) end
+opcodes[0xBD + 1] = function() op_cp(getRegL()) end
+opcodes[0xBE + 1] = function() op_cp(getIndRegHL()) end
+opcodes[0xBF + 1] = function() op_cp(getRegA()) end
+
+-- CP n, 0xFE
+opcodes[0xFE + 1] = function() idle(1); op_cp(getOpcode()) end
+
+local function op_rl(value)
+    local b7 = bit.band(value,0x80) ~= 0
+    local C = getFlagC() and 1 or 0
+    local result = (bit.lshift(value,1)+C)%0x100
+    setFlags(result == 0, false, false, b7)
+    return result
+end
+local function op_rr(value)
+    local b0 = bit.band(value,0x01)
+    local C = getFlagC() and 1 or 0
+    local result = (bit.rshift(value,1)+bit.lshift(C,7))%0x100
+    setFlags(result == 0, false, false, b0==1)
+    return result
+end
+local function op_rlc(value)
+    local b7 = bit.band(value,0x80) ~= 0
+    local result = (bit.lshift(value,1)+(b7 and 1 or 0))%0x100
+    setFlags(result == 0, false, false, b7)
+    return result
+end
+local function op_rrc(value)
+    local b0 = bit.band(value,0x01)
+    local result = (bit.rshift(value,1)+bit.lshift(b0,7))%0x100
+    setFlags(result == 0, false, false, b0==1)
+    return result
+end
+
+-- RLCA, RLA, RRCA, RRA, 0x07 0x17 0x0F 0x1F
+opcodes[0x07 + 1] = function()
+    setRegA(op_rlc(getRegA()))
+    resetFlagZ()
+end
+opcodes[0x17 + 1] = function()
+    setRegA(op_rl(getRegA()))
+    resetFlagZ()
+end
+opcodes[0x0F + 1] = function()
+    setRegA(op_rrc(getRegA()))
+    resetFlagZ()
+end
+opcodes[0x1F + 1] = function()
+    setRegA(op_rr(getRegA()))
+    resetFlagZ()
+end
+
+local function op_add(value)
+    local a = getRegA()
+    local result = a + value
+
+    setRegA(result % 0x100)
+    setFlags(
+        result % 0x100 == 0,
+        false,
+        (a % 0x10) + (value % 0x10) > 0x0F,
+        result > 0xFF
+    )
+end
+
+-- ADD, 0x80-0x87
+opcodes[0x80 + 1] = function() op_add(getRegB()) end
+opcodes[0x81 + 1] = function() op_add(getRegC()) end
+opcodes[0x82 + 1] = function() op_add(getRegD()) end
+opcodes[0x83 + 1] = function() op_add(getRegE()) end
+opcodes[0x84 + 1] = function() op_add(getRegH()) end
+opcodes[0x85 + 1] = function() op_add(getRegL()) end
+opcodes[0x86 + 1] = function() op_add(getIndRegHL()) end
+opcodes[0x87 + 1] = function() op_add(getRegA()) end
+
+local function op_adc(value)
+    local a = getRegA()
+    local carry = getFlagC() and 1 or 0
+    local result = a + value + carry
+
+    setRegA(result % 0x100)
+    setFlags(
+        result % 0x100 == 0,
+        false,
+        (a % 0x10) + (value % 0x10) + carry > 0x0F,
+        result > 0xFF
+    )
+end
+
+-- ADC, 0x88-0x8F
+opcodes[0x88 + 1] = function() op_adc(getRegB()) end
+opcodes[0x89 + 1] = function() op_adc(getRegC()) end
+opcodes[0x8A + 1] = function() op_adc(getRegD()) end
+opcodes[0x8B + 1] = function() op_adc(getRegE()) end
+opcodes[0x8C + 1] = function() op_adc(getRegH()) end
+opcodes[0x8D + 1] = function() op_adc(getRegL()) end
+opcodes[0x8E + 1] = function() op_adc(getIndRegHL()) end
+opcodes[0x8F + 1] = function() op_adc(getRegA()) end
+
+local function op_sub(value)
+    local a = getRegA()
+    local result = a - value
+
+    setRegA(result % 0x100)
+    setFlags(
+        result % 0x100 == 0,
+        true,
+        (a % 0x10) < (value % 0x10),
+        a < value
+    )
+end
+
+-- SUB, 0x90-0x97
+opcodes[0x90 + 1] = function() op_sub(getRegB()) end
+opcodes[0x91 + 1] = function() op_sub(getRegC()) end
+opcodes[0x92 + 1] = function() op_sub(getRegD()) end
+opcodes[0x93 + 1] = function() op_sub(getRegE()) end
+opcodes[0x94 + 1] = function() op_sub(getRegH()) end
+opcodes[0x95 + 1] = function() op_sub(getRegL()) end
+opcodes[0x96 + 1] = function() op_sub(getIndRegHL()) end
+opcodes[0x97 + 1] = function() op_sub(getRegA()) end
+
+local function op_sbc(value)
+    local a = getRegA()
+    local carry = getFlagC() and 1 or 0
+    local result = a - value - carry
+
+    setRegA(result % 0x100)
+    setFlags(
+        result % 0x100 == 0,
+        true,
+        (a % 0x10) < ((value % 0x10) + carry),
+        a < (value + carry)
+    )
+end
+
+-- SBC, 0x98-0x9F
+opcodes[0x98 + 1] = function() op_sbc(getRegB()) end
+opcodes[0x99 + 1] = function() op_sbc(getRegC()) end
+opcodes[0x9A + 1] = function() op_sbc(getRegD()) end
+opcodes[0x9B + 1] = function() op_sbc(getRegE()) end
+opcodes[0x9C + 1] = function() op_sbc(getRegH()) end
+opcodes[0x9D + 1] = function() op_sbc(getRegL()) end
+opcodes[0x9E + 1] = function() op_sbc(getIndRegHL()) end
+opcodes[0x9F + 1] = function() op_sbc(getRegA()) end
+
+-- ADD n SUB n ADC n SBC n, 0xC6 0xD6 0xCE 0xDE
+opcodes[0xC6 + 1] = function() op_add(getOpcode()); idle(1) end
+opcodes[0xD6 + 1] = function() op_sub(getOpcode()); idle(1) end
+opcodes[0xCE + 1] = function() op_adc(getOpcode()); idle(1) end
+opcodes[0xDE + 1] = function() op_sbc(getOpcode()); idle(1) end
+
+-- 16-bit INC
+
+local function op_inc_16(src, dest)
+    idle(1)
+    dest(bit.band(src() + 1, 0xFFFF))
+end
+
+opcodes[0x03 + 1] = function() op_inc_16(getRegBC, setRegBC) end
+opcodes[0x13 + 1] = function() op_inc_16(getRegDE, setRegDE) end
+opcodes[0x23 + 1] = function() op_inc_16(getRegHL, setRegHL) end
+opcodes[0x33 + 1] = function() op_inc_16(getSP, setSP) end
+
+local function op_dec_16(src, dest)
+    idle(1)
+    local b = src()
+    dest(b == 0 and 0xFFFF or b - 1)
+end
+
+opcodes[0x0B + 1] = function() op_dec_16(getRegBC, setRegBC) end
+opcodes[0x1B + 1] = function() op_dec_16(getRegDE, setRegDE) end
+opcodes[0x2B + 1] = function() op_dec_16(getRegHL, setRegHL) end
+opcodes[0x3B + 1] = function() op_dec_16(getSP, setSP) end
+
+-- LD 16-bit
+opcodes[0x01 + 1] = function() 
+    local nn_lsb = getOpcode()
+    local nn_msb = getOpcode()
+    local nn = 256*nn_msb + nn_lsb
+    setRegBC(nn)
+    idle(2)
+end
+opcodes[0x11 + 1] = function() 
+    local nn_lsb = getOpcode()
+    local nn_msb = getOpcode()
+    local nn = 256*nn_msb + nn_lsb
+    setRegDE(nn)
+    idle(2)
+end
+opcodes[0x21 + 1] = function() 
+    local nn_lsb = getOpcode()
+    local nn_msb = getOpcode()
+    local nn = 256*nn_msb + nn_lsb
+    setRegHL(nn)
+    idle(2)
+end
+opcodes[0x31 + 1] = function() 
+    local nn_lsb = getOpcode()
+    local nn_msb = getOpcode()
+    local nn = 256*nn_msb + nn_lsb
+    setSP(nn)
+    idle(2)
+end
+
+opcodes[0x08 + 1] = function()
+    local nn_lsb = getOpcode()
+    local nn_msb = getOpcode()
+    local nn = 256 * nn_msb + nn_lsb
+    local sp = getSP()
+
+    setMem(nn, sp % 0x100)
+    setMem((nn + 1) % 0x10000, math.floor(sp / 0x100))
+    idle(4)
+end
+
+opcodes[0xF8 + 1] = function()
+    local offset = getOpcode()
+    local sp = getSP()
+    local result = (sp + toSigned8(offset)) % 0x10000
+    setFlags(
+        false,
+        false,
+        (sp % 0x10) + (offset % 0x10) > 0x0F,
+        (sp % 0x100) + offset > 0xFF
+    )
+    setRegHL(result)
+    idle(2)
+end
+opcodes[0xF9 + 1] = function() 
+    setSP(getRegHL())
+    idle(1)
+end
+
+----------------------
+-- prefixed opcodes --
+----------------------
+
+local prefixed_opcodes = {}
+
+opcodes[0xCB+1] = function() idle(1); prefixed_opcodes[getOpcode() + 1]() end
+
+-- SLA, 0x20 to 0x27
+
+local function op_sla(src, dest)
+    local b = bit.lshift(src(), 1)
+    setFlags(false, false, false, b > 0xFF)
+    b = bit.band(b, 0xFF)
+    if b == 0x00 then setFlagZ() end
+    dest(b)
+end
+
+do
+    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
+    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
+
+    for i=1, 8 do
+        prefixed_opcodes[0x20 + (i-1) + 1] = function() op_sla(srcs[i], dests[i]) end
+    end
+end
+
+-- SRA, 0x28 to 0x2F
+
+local function op_sra(src, dest)
+    local b = src()
+    setFlags(false, false, false, bit.band(b, 0x01) ~= 0)
+    b = bit.band(b, 0x80) + bit.rshift(b, 1)
+    if b == 0x00 then setFlagZ() end
+    dest(b)
+end
+
+do
+    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
+    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
+
+    for i=1, 8 do
+        prefixed_opcodes[0x28 + (i-1) + 1] = function() op_sra(srcs[i], dests[i]) end
+    end
+end
+
+-- SWAP, 0x30 to 0x37
+
+local function op_swap(src, dest)
+    local l = src()
+    local h = bit.lshift(l, 4)
+    l = bit.rshift(l, 4)
+    local b = h + l
+    setFlags(b == 0x00, false, false, false)
+    dest(b)
+end
+
+do
+    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
+    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
+
+    for i=1, 8 do
+        prefixed_opcodes[0x30 + (i-1) + 1] = function() op_swap(srcs[i], dests[i]) end
+    end
+end
+
+-- SRL, 0x38 to 0x3F
+
+local function op_srl(src, dest)
+    local b = src()
+    setFlags(false, false, false, bit.band(b, 0x01) ~= 0)
+    b = bit.rshift(b, 1)
+    if b == 0x00 then setFlagZ() end
+    dest(b)
+end
+
+do
+    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
+    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
+
+    for i=1, 8 do
+        prefixed_opcodes[0x38 + (i-1) + 1] = function() op_srl(srcs[i], dests[i]) end
+    end
+end
+
+-- BIT, 0xCB 0x40 to 0xCB 0x7F
+
+local function op_bit(mask, src)
+    resetFlagN(); setFlagH()
+    if bit.band(src(), mask) == 0 then
+        setFlagZ()
+    else
+        resetFlagZ()
+    end
+end
+
+for i, mask in ipairs { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 } do
+    for j, src in ipairs { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA } do
+        prefixed_opcodes[0x40 + (i-1) * 8 + (j-1) + 1] = function() op_bit(mask, src) end
+    end
+end
+
+-- RES, 0xCB 0x80 to 0xCB 0xBF
+
+local function op_res(mask, src, dest)
+    dest(bit.band(mask, src()))
+end
+
+for i, mask in ipairs { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 } do
+    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
+    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
+
+    mask = bit.bxor(mask, 0xFF)
+
+    for j=1, 8 do
+        prefixed_opcodes[0x80 + (i-1) * 8 + (j-1) + 1] = function() op_res(mask, srcs[j], dests[j]) end
+    end
+end
+
+-- SET, 0xCB 0xC0 to 0xCB 0xFF
+
+local function op_set(mask, src, dest)
+    dest(bit.bor(mask, src()))
+end
+
+for i, mask in ipairs { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 } do
+    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
+    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
+
+    for j=1, 8 do
+        prefixed_opcodes[0xC0 + (i-1) * 8 + (j-1) + 1] = function() op_set(mask, srcs[j], dests[j]) end
+    end
+end
+
+-- return extra goodies
+
+vm.getMem = getMem
+
+test.unit "vm - registers" (function()
+    resetVM()
+    setRegB(3)
+    assert(getRegB() == 3)
+    setRegBC(0x1234)
+    assert(getRegBC() == 0x1234)
+    resetVM()
+end)
+
+test.unit "vm - flags" (function()
+    resetVM()
+    assert(getRegF() == 0x00)
+    setFlagH()
+    setFlagZ()
+    assert(getRegF() == 0xA0)
+    resetFlagZ()
+    assert(getRegF() == 0x20)
+    setFlagZ()
+    assert(getFlagZ())
+    setFlagC()
+    setFlagN()
+    assert(getFlagN())
+    assert(getRegF() == 0xF0)
+    resetFlagZ(); assert(getRegF() == 0x70)
+    resetFlagN(); assert(getRegF() == 0x30)
+    resetFlagH(); assert(getRegF() == 0x10)
+    assert(not getFlagH())
+    resetFlagC(); assert(getRegF() == 0x00)
+    resetVM()
+end)
+
+test.unit "vm - AND" (function()
+    test.label "timings"
+    test.assert_equal(timeInstruction(0xA2), 1)
+    test.assert_equal(timeInstruction(0xA6), 2)
+    test.assert_equal(timeInstruction(0xE6), 2)
+
+    test.label "arithmetic and flags"
+    resetVM()
+    setRegA(0x88); setRegB(0x0F)
+    -- AND B
+    testRun { 0xA0 }
+    test.assert_equal(getRegA(), 0x08)
+    test.assert_equal(getRegF(), 0x20)
+    resetVM()
+    setRegA(0x12)
+    -- AND n8; 0x00
+    testRun { 0xE6, 0x00 }
+    test.assert_equal(getRegA(), 0x00)
+    test.assert_equal(getRegF(), 0xA0)
+    resetVM()
+end)
+
+test.unit "vm - XOR" (function()
+    test.label "timings"
+    test.assert_equal(timeInstruction(0xAA), 1)
+    test.assert_equal(timeInstruction(0xAE), 2)
+    test.assert_equal(timeInstruction(0xEE), 2)
+
+    test.label "arithmetic and flags"
+    resetVM()
+    setRegA(0xAA); setRegD(0x0F)
+    -- XOR D
+    testRun { 0xAA }
+    test.assert_equal(getRegA(), 0xA5)
+    test.assert_equal(getRegF(), 0x00)
+    resetVM()
+    setRegA(0x0F)
+    -- XOR n8; 0x0F
+    testRun { 0xEE, 0x0F }
+    test.assert_equal(getRegA(), 0x00)
+    test.assert_equal(getRegF(), 0x80)
+    resetVM()
+end)
+
+test.unit "vm - OR" (function()
+    test.label "timings"
+    test.assert_equal(timeInstruction(0xB2), 1)
+    test.assert_equal(timeInstruction(0xB6), 2)
+    test.assert_equal(timeInstruction(0xF6), 2)
+
+    test.label "arithmetic and flags"
+    resetVM()
+    setRegA(0x40); setRegH(0x12); setRegF(0x40)
+    -- OR H
+    testRun { 0xB4 }
+    test.assert_equal(getRegA(), 0x52)
+    test.assert_equal(getRegF(), 0x00)
+    resetVM()
+    -- OR B
+    testRun { 0xB0 }
+    test.assert_equal(getRegA(), 0x00)
+    test.assert_equal(getRegF(), 0x80)
+    resetVM()
+    setRegA(0xF0); setRegF(0x10)
+    -- OR n8; 0xFF
+    testRun { 0xF6, 0xFF }
+    test.assert_equal(getRegA(), 0xFF)
+    test.assert_equal(getRegF(), 0x00)
+    resetVM()
+end)
 
 test.unit "vm - JP and JR" (function()
     -- These tests check the PC immediately after an instruction.
@@ -585,25 +969,6 @@ test.unit "vm - JP and JR" (function()
     testLenBuffer = oldTestLenBuffer
 end)
 
-local function op_cp(value)
-    local a = getRegA()
-    local result = a - value
-    setFlags(result % 0x100 == 0, true, bit.band(a, 0x0F) < bit.band(value, 0x0F), a<value)
-end
-
--- CP r/[HL], 0xB8 - 0xBF
-opcodes[0xB8 + 1] = function() op_cp(getRegB()) end
-opcodes[0xB9 + 1] = function() op_cp(getRegC()) end
-opcodes[0xBA + 1] = function() op_cp(getRegD()) end
-opcodes[0xBB + 1] = function() op_cp(getRegE()) end
-opcodes[0xBC + 1] = function() op_cp(getRegH()) end
-opcodes[0xBD + 1] = function() op_cp(getRegL()) end
-opcodes[0xBE + 1] = function() op_cp(getIndRegHL()) end
-opcodes[0xBF + 1] = function() op_cp(getRegA()) end
-
--- CP n, 0xFE
-opcodes[0xFE + 1] = function() idle(1); op_cp(getOpcode()) end
-
 test.unit "vm - CP" (function()
 
     -- Equal values: Z=1, N=1, H=0, C=0
@@ -677,51 +1042,6 @@ test.unit "vm - CP" (function()
     assert(not getFlagC())
 end)
 
-local function op_rl(value)
-    local b7 = bit.band(value,0x80) ~= 0
-    local C = getFlagC() and 1 or 0
-    local result = (bit.lshift(value,1)+C)%0x100
-    setFlags(result == 0, false, false, b7)
-    return result
-end
-local function op_rr(value)
-    local b0 = bit.band(value,0x01)
-    local C = getFlagC() and 1 or 0
-    local result = (bit.rshift(value,1)+bit.lshift(C,7))%0x100
-    setFlags(result == 0, false, false, b0==1)
-    return result
-end
-local function op_rlc(value)
-    local b7 = bit.band(value,0x80) ~= 0
-    local result = (bit.lshift(value,1)+(b7 and 1 or 0))%0x100
-    setFlags(result == 0, false, false, b7)
-    return result
-end
-local function op_rrc(value)
-    local b0 = bit.band(value,0x01)
-    local result = (bit.rshift(value,1)+bit.lshift(b0,7))%0x100
-    setFlags(result == 0, false, false, b0==1)
-    return result
-end
-
--- RLCA, RLA, RRCA, RRA, 0x07 0x17 0x0F 0x1F
-opcodes[0x07 + 1] = function()
-    setRegA(op_rlc(getRegA()))
-    resetFlagZ()
-end
-opcodes[0x17 + 1] = function()
-    setRegA(op_rl(getRegA()))
-    resetFlagZ()
-end
-opcodes[0x0F + 1] = function()
-    setRegA(op_rrc(getRegA()))
-    resetFlagZ()
-end
-opcodes[0x1F + 1] = function()
-    setRegA(op_rr(getRegA()))
-    resetFlagZ()
-end
-
 test.unit "vm - Rotate" (function()
     -- Equal values: Z=1, N=1, H=0, C=0
     setRegA(0x42)
@@ -794,29 +1114,6 @@ test.unit "vm - Rotate" (function()
     assert(not getFlagC())
 end)
 
-local function op_add(value)
-    local a = getRegA()
-    local result = a + value
-
-    setRegA(result % 0x100)
-    setFlags(
-        result % 0x100 == 0,
-        false,
-        (a % 0x10) + (value % 0x10) > 0x0F,
-        result > 0xFF
-    )
-end
-
--- ADD, 0x80-0x87
-opcodes[0x80 + 1] = function() op_add(getRegB()) end
-opcodes[0x81 + 1] = function() op_add(getRegC()) end
-opcodes[0x82 + 1] = function() op_add(getRegD()) end
-opcodes[0x83 + 1] = function() op_add(getRegE()) end
-opcodes[0x84 + 1] = function() op_add(getRegH()) end
-opcodes[0x85 + 1] = function() op_add(getRegL()) end
-opcodes[0x86 + 1] = function() op_add(getIndRegHL()) end
-opcodes[0x87 + 1] = function() op_add(getRegA()) end
-
 test.unit "vm - ADD" (function()
     -- Normal addition: 0x12 + 0x23 = 0x35
     setRegA(0x12)
@@ -882,30 +1179,6 @@ test.unit "vm - ADD" (function()
     assert(getFlagH())
     assert(getFlagC())
 end)
-
-local function op_adc(value)
-    local a = getRegA()
-    local carry = getFlagC() and 1 or 0
-    local result = a + value + carry
-
-    setRegA(result % 0x100)
-    setFlags(
-        result % 0x100 == 0,
-        false,
-        (a % 0x10) + (value % 0x10) + carry > 0x0F,
-        result > 0xFF
-    )
-end
-
--- ADC, 0x88-0x8F
-opcodes[0x88 + 1] = function() op_adc(getRegB()) end
-opcodes[0x89 + 1] = function() op_adc(getRegC()) end
-opcodes[0x8A + 1] = function() op_adc(getRegD()) end
-opcodes[0x8B + 1] = function() op_adc(getRegE()) end
-opcodes[0x8C + 1] = function() op_adc(getRegH()) end
-opcodes[0x8D + 1] = function() op_adc(getRegL()) end
-opcodes[0x8E + 1] = function() op_adc(getIndRegHL()) end
-opcodes[0x8F + 1] = function() op_adc(getRegA()) end
 
 test.unit "vm - ADC" (function()
     -- Normal addition, carry clear: 0x12 + 0x23 = 0x35
@@ -978,54 +1251,6 @@ test.unit "vm - ADC" (function()
     assert(not getFlagH())
     assert(not getFlagC())
 end)
-
-local function op_sub(value)
-    local a = getRegA()
-    local result = a - value
-
-    setRegA(result % 0x100)
-    setFlags(
-        result % 0x100 == 0,
-        true,
-        (a % 0x10) < (value % 0x10),
-        a < value
-    )
-end
-
--- SUB, 0x90-0x97
-opcodes[0x90 + 1] = function() op_sub(getRegB()) end
-opcodes[0x91 + 1] = function() op_sub(getRegC()) end
-opcodes[0x92 + 1] = function() op_sub(getRegD()) end
-opcodes[0x93 + 1] = function() op_sub(getRegE()) end
-opcodes[0x94 + 1] = function() op_sub(getRegH()) end
-opcodes[0x95 + 1] = function() op_sub(getRegL()) end
-opcodes[0x96 + 1] = function() op_sub(getIndRegHL()) end
-opcodes[0x97 + 1] = function() op_sub(getRegA()) end
-
-local function op_sbc(value)
-    local a = getRegA()
-    local carry = getFlagC() and 1 or 0
-    local result = a - value - carry
-
-    setRegA(result % 0x100)
-    setFlags(
-        result % 0x100 == 0,
-        true,
-        (a % 0x10) < ((value % 0x10) + carry),
-        a < (value + carry)
-    )
-end
-
--- SBC, 0x98-0x9F
-opcodes[0x98 + 1] = function() op_sbc(getRegB()) end
-opcodes[0x99 + 1] = function() op_sbc(getRegC()) end
-opcodes[0x9A + 1] = function() op_sbc(getRegD()) end
-opcodes[0x9B + 1] = function() op_sbc(getRegE()) end
-opcodes[0x9C + 1] = function() op_sbc(getRegH()) end
-opcodes[0x9D + 1] = function() op_sbc(getRegL()) end
-opcodes[0x9E + 1] = function() op_sbc(getIndRegHL()) end
-opcodes[0x9F + 1] = function() op_sbc(getRegA()) end
-
 
 test.unit "vm - SUB" (function()
     -- Normal subtraction: 0x35 - 0x12 = 0x23
@@ -1155,12 +1380,6 @@ test.unit "vm - SBC" (function()
     assert(not getFlagC())
 end)
 
--- ADD n SUB n ADC n SBC n, 0xC6 0xD6 0xCE 0xDE
-opcodes[0xC6 + 1] = function() op_add(getOpcode()); idle(1) end
-opcodes[0xD6 + 1] = function() op_sub(getOpcode()); idle(1) end
-opcodes[0xCE + 1] = function() op_adc(getOpcode()); idle(1) end
-opcodes[0xDE + 1] = function() op_sbc(getOpcode()); idle(1) end
-
 test.unit "vm - n arithmetic" (function()
     -- ADD A, d8: 0x12 + 0x23 = 0x35
     resetVM()
@@ -1209,29 +1428,6 @@ test.unit "vm - n arithmetic" (function()
     assert(not getFlagC())
 end)
 
--- 16-bit INC
-
-local function op_inc_16(src, dest)
-    idle(1)
-    dest(bit.band(src() + 1, 0xFFFF))
-end
-
-opcodes[0x03 + 1] = function() op_inc_16(getRegBC, setRegBC) end
-opcodes[0x13 + 1] = function() op_inc_16(getRegDE, setRegDE) end
-opcodes[0x23 + 1] = function() op_inc_16(getRegHL, setRegHL) end
-opcodes[0x33 + 1] = function() op_inc_16(getSP, setSP) end
-
-local function op_dec_16(src, dest)
-    idle(1)
-    local b = src()
-    dest(b == 0 and 0xFFFF or b - 1)
-end
-
-opcodes[0x0B + 1] = function() op_dec_16(getRegBC, setRegBC) end
-opcodes[0x1B + 1] = function() op_dec_16(getRegDE, setRegDE) end
-opcodes[0x2B + 1] = function() op_dec_16(getRegHL, setRegHL) end
-opcodes[0x3B + 1] = function() op_dec_16(getSP, setSP) end
-
 test.unit "vm - 16 bit INC and DEC" (function()
     test.assert_equal(timeInstruction(0x13), 2)
     test.assert_equal(timeInstruction(0x1B), 2)
@@ -1252,65 +1448,6 @@ test.unit "vm - 16 bit INC and DEC" (function()
     test.assert_equal(getRegF(), 0x40)
     resetVM()
 end)
-
--- LD 16-bit
-opcodes[0x01 + 1] = function() 
-    local nn_lsb = getOpcode()
-    local nn_msb = getOpcode()
-    local nn = 256*nn_msb + nn_lsb
-    setRegBC(nn)
-    idle(2)
-end
-opcodes[0x11 + 1] = function() 
-    local nn_lsb = getOpcode()
-    local nn_msb = getOpcode()
-    local nn = 256*nn_msb + nn_lsb
-    setRegDE(nn)
-    idle(2)
-end
-opcodes[0x21 + 1] = function() 
-    local nn_lsb = getOpcode()
-    local nn_msb = getOpcode()
-    local nn = 256*nn_msb + nn_lsb
-    setRegHL(nn)
-    idle(2)
-end
-opcodes[0x31 + 1] = function() 
-    local nn_lsb = getOpcode()
-    local nn_msb = getOpcode()
-    local nn = 256*nn_msb + nn_lsb
-    setSP(nn)
-    idle(2)
-end
-
-opcodes[0x08 + 1] = function()
-    local nn_lsb = getOpcode()
-    local nn_msb = getOpcode()
-    local nn = 256 * nn_msb + nn_lsb
-    local sp = getSP()
-
-    setMem(nn, sp % 0x100)
-    setMem((nn + 1) % 0x10000, math.floor(sp / 0x100))
-    idle(4)
-end
-
-opcodes[0xF8 + 1] = function()
-    local offset = getOpcode()
-    local sp = getSP()
-    local result = (sp + toSigned8(offset)) % 0x10000
-    setFlags(
-        false,
-        false,
-        (sp % 0x10) + (offset % 0x10) > 0x0F,
-        (sp % 0x100) + offset > 0xFF
-    )
-    setRegHL(result)
-    idle(2)
-end
-opcodes[0xF9 + 1] = function() 
-    setSP(getRegHL())
-    idle(1)
-end
 
 test.unit "vm - LD 16-bit instructions" (function()
     -- LD BC, 0x1234
@@ -1367,33 +1504,6 @@ test.unit "vm - LD 16-bit instructions" (function()
     assert(getSP() == 0xBEEF)
 end)
 
-----------------------
--- prefixed opcodes --
-----------------------
-
-local prefixed_opcodes = {}
-
-opcodes[0xCB+1] = function() idle(1); prefixed_opcodes[getOpcode() + 1]() end
-
--- SLA, 0x20 to 0x27
-
-local function op_sla(src, dest)
-    local b = bit.lshift(src(), 1)
-    setFlags(false, false, false, b > 0xFF)
-    b = bit.band(b, 0xFF)
-    if b == 0x00 then setFlagZ() end
-    dest(b)
-end
-
-do
-    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
-    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
-
-    for i=1, 8 do
-        prefixed_opcodes[0x20 + (i-1) + 1] = function() op_sla(srcs[i], dests[i]) end
-    end
-end
-
 test.unit "vm - SLA" (function()
     test.assert_equal(timeInstruction(prefixed_opcodes[0x27 + 1]), 1)
     test.assert_equal(timeInstruction(prefixed_opcodes[0x26 + 1]), 3)
@@ -1413,25 +1523,6 @@ test.unit "vm - SLA" (function()
     resetVM()
 end)
 
--- SRA, 0x28 to 0x2F
-
-local function op_sra(src, dest)
-    local b = src()
-    setFlags(false, false, false, bit.band(b, 0x01) ~= 0)
-    b = bit.band(b, 0x80) + bit.rshift(b, 1)
-    if b == 0x00 then setFlagZ() end
-    dest(b)
-end
-
-do
-    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
-    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
-
-    for i=1, 8 do
-        prefixed_opcodes[0x28 + (i-1) + 1] = function() op_sra(srcs[i], dests[i]) end
-    end
-end
-
 test.unit "vm - SRA" (function()
     test.assert_equal(timeInstruction(prefixed_opcodes[0x2F + 1]), 1)
     test.assert_equal(timeInstruction(prefixed_opcodes[0x2E + 1]), 3)
@@ -1450,26 +1541,6 @@ test.unit "vm - SRA" (function()
     test.assert_equal(getRegF(), 0x10)
     resetVM()
 end)
-
--- SWAP, 0x30 to 0x37
-
-local function op_swap(src, dest)
-    local l = src()
-    local h = bit.lshift(l, 4)
-    l = bit.rshift(l, 4)
-    local b = h + l
-    setFlags(b == 0x00, false, false, false)
-    dest(b)
-end
-
-do
-    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
-    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
-
-    for i=1, 8 do
-        prefixed_opcodes[0x30 + (i-1) + 1] = function() op_swap(srcs[i], dests[i]) end
-    end
-end
 
 test.unit "vm - SWAP" (function()
     test.assert_equal(timeInstruction(prefixed_opcodes[0x37 + 1]), 1)
@@ -1495,25 +1566,6 @@ test.unit "vm - SWAP" (function()
     resetVM()
 end)
 
--- SRL, 0x38 to 0x3F
-
-local function op_srl(src, dest)
-    local b = src()
-    setFlags(false, false, false, bit.band(b, 0x01) ~= 0)
-    b = bit.rshift(b, 1)
-    if b == 0x00 then setFlagZ() end
-    dest(b)
-end
-
-do
-    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
-    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
-
-    for i=1, 8 do
-        prefixed_opcodes[0x38 + (i-1) + 1] = function() op_srl(srcs[i], dests[i]) end
-    end
-end
-
 test.unit "vm - SRL" (function()
     test.assert_equal(timeInstruction(prefixed_opcodes[0x3F + 1]), 1)
     test.assert_equal(timeInstruction(prefixed_opcodes[0x3E + 1]), 3)
@@ -1533,23 +1585,6 @@ test.unit "vm - SRL" (function()
     resetVM()
 end)
 
--- BIT, 0xCB 0x40 to 0xCB 0x7F
-
-local function op_bit(mask, src)
-    resetFlagN(); setFlagH()
-    if bit.band(src(), mask) == 0 then
-        setFlagZ()
-    else
-        resetFlagZ()
-    end
-end
-
-for i, mask in ipairs { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 } do
-    for j, src in ipairs { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA } do
-        prefixed_opcodes[0x40 + (i-1) * 8 + (j-1) + 1] = function() op_bit(mask, src) end
-    end
-end
-
 test.unit "vm - BIT" (function()
     test.assert_equal(timeInstruction(prefixed_opcodes[0x40 + 1]), 1)
     test.assert_equal(timeInstruction(prefixed_opcodes[0x66 + 1]), 2)
@@ -1566,23 +1601,6 @@ test.unit "vm - BIT" (function()
     assert(not getFlagZ())
     resetVM()
 end)
-
--- RES, 0xCB 0x80 to 0xCB 0xBF
-
-local function op_res(mask, src, dest)
-    dest(bit.band(mask, src()))
-end
-
-for i, mask in ipairs { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 } do
-    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
-    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
-
-    mask = bit.bxor(mask, 0xFF)
-
-    for j=1, 8 do
-        prefixed_opcodes[0x80 + (i-1) * 8 + (j-1) + 1] = function() op_res(mask, srcs[j], dests[j]) end
-    end
-end
 
 test.unit "vm - RES" (function()
     test.assert_equal(timeInstruction(prefixed_opcodes[0x82 + 1]), 1)
@@ -1602,21 +1620,6 @@ test.unit "vm - RES" (function()
     resetVM()
 end)
 
--- SET, 0xCB 0xC0 to 0xCB 0xFF
-
-local function op_set(mask, src, dest)
-    dest(bit.bor(mask, src()))
-end
-
-for i, mask in ipairs { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 } do
-    local srcs = { getRegB, getRegC, getRegD, getRegE, getRegH, getRegL, getIndRegHL, getRegA }
-    local dests = { setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, setIndRegHL, setRegA }
-
-    for j=1, 8 do
-        prefixed_opcodes[0xC0 + (i-1) * 8 + (j-1) + 1] = function() op_set(mask, srcs[j], dests[j]) end
-    end
-end
-
 test.unit "vm - SET" (function()
     test.assert_equal(timeInstruction(prefixed_opcodes[0xC2 + 1]), 1)
     test.assert_equal(timeInstruction(prefixed_opcodes[0xC6 + 1]), 3)
@@ -1633,190 +1636,5 @@ test.unit "vm - SET" (function()
     testRun { 0xCB, 0xF6 }
     test.assert_equal(getMem(0x0100), 0x40)
 end)
-
--- ROTATES idk fuck you, you can read
-
----------------------
--- unit test silly --
----------------------
-
-test.unit "vm - LD" (function()
-    resetVM()
-    setRegB(0x12); setRegC(0x00);
-    -- LD C, B;
-    testRun {0x48}
-    assert(getRegC() == 0x12)
-    assert(timeInstruction(0x48) == 1)
-
-    resetVM()
-    setRegHL(0x0002); setRegA(0x67); setRegB(0x00);
-    -- LD [HL], A; LD B, [HL]; NOP (which gets overwritten)
-    testRun {0x77; 0x46; 0x00}
-    assert(getRegB() == getRegA())
-    -- indirect get / set instructions take one extra M-cycle
-    assert(timeInstruction(0x77) == 2 and timeInstruction(0x46) == 2)
-
-    resetVM()
-end)
-
-test.unit "vm - LD part 2" (function()
-    -- LD [BC], A
-    resetVM()
-    setRegBC(0xC000); setRegA(0x42)
-    testRun {0x02}
-    assert(getMem(0xC000) == 0x42)
-    assert(timeInstruction(0x02) == 2)
-
-    -- LD [DE], A
-    resetVM()
-    setRegDE(0xC001); setRegA(0x43)
-    testRun {0x12}
-    assert(getMem(0xC001) == 0x43)
-    assert(timeInstruction(0x12) == 2)
-
-    -- LD [HL+], A
-    resetVM()
-    setRegHL(0xC002); setRegA(0x44)
-    testRun {0x22}
-    assert(getMem(0xC002) == 0x44)
-    assert(getRegHL() == 0xC003)
-    assert(timeInstruction(0x22) == 2)
-
-    -- LD [HL-], A
-    resetVM()
-    setRegHL(0xC003); setRegA(0x45)
-    testRun {0x32}
-    assert(getMem(0xC003) == 0x45)
-    assert(getRegHL() == 0xC002)
-    assert(timeInstruction(0x32) == 2)
-
-    -- LD B, d8
-    resetVM()
-    testRun {0x06, 0x12}
-    assert(getRegB() == 0x12)
-    assert(timeInstruction(0x06) == 2)
-
-    -- LD D, d8
-    resetVM()
-    testRun {0x16, 0x23}
-    assert(getRegD() == 0x23)
-    assert(timeInstruction(0x16) == 2)
-
-    -- LD H, d8
-    resetVM()
-    testRun {0x26, 0x34}
-    assert(getRegH() == 0x34)
-    assert(timeInstruction(0x26) == 2)
-
-    
-    -- LD [HL], d8
-    resetVM()
-    setRegHL(0xC004)
-    testRun {0x36, 0x56}
-    assert(getMem(0xC004) == 0x56)
-    assert(timeInstruction(0x36) == 3)
-    
-    -- LD A, [BC]
-    resetVM()
-    setRegBC(0xC005); setMem(0xC005, 0x67)
-    testRun {0x0A}
-    assert(getRegA() == 0x67)
-    assert(timeInstruction(0x0A) == 2)
-
-    -- LD A, [DE]
-    resetVM()
-    setRegDE(0xC006); setMem(0xC006, 0x78)
-    testRun {0x1A}
-    assert(getRegA()==0x78)
-    assert(timeInstruction(0x1A) == 2)
-
-    -- LD A, [HL+]
-    resetVM()
-    setRegHL(0xC007); setMem(0xC007, 0x89)
-    testRun {0x2A}
-    assert(getRegA() == 0x89)
-    assert(getRegHL() == 0xC008)
-    assert(timeInstruction(0x2A) == 2)
-
-    -- LD A, [HL-]
-    resetVM()
-    setRegHL(0xC008); setMem(0xC008, 0x9A)
-    testRun {0x3A}
-    assert(getRegA() == 0x9A)
-    assert(getRegHL() == 0xC007)
-    assert(timeInstruction(0x3A) == 2)
-
-    -- LD C, d8
-    resetVM()
-    testRun {0x0E, 0xAB}
-    assert(getRegC() == 0xAB)
-    assert(timeInstruction(0x0E) == 2)
-
-    -- LD E, d8
-    resetVM()
-    testRun {0x1E, 0xBC}
-    assert(getRegE() == 0xBC)
-    assert(timeInstruction(0x1E) == 2)
-
-    -- LD L, d8
-    resetVM()
-    testRun {0x2E, 0xCD}
-    assert(getRegL() == 0xCD)
-    assert(timeInstruction(0x2E) == 2)
-
-    -- LD A, d8
-    resetVM()
-    testRun {0x3E, 0xDE}
-    assert(getRegA() == 0xDE)
-    assert(timeInstruction(0x3E) == 2)
-
-    -- LDH [a8], A
-    resetVM()
-    setRegA(0x5A)
-    testRun {0xE0, 0x80}
-    assert(getMem(0xFF80) == 0x5A)
-    assert(timeInstruction(0xE0) == 3)
-
-    -- LDH A, [a8]
-    resetVM()
-    setMem(0xFF81, 0x6B)
-    testRun {0xF0, 0x81}
-    assert(getRegA() == 0x6B)
-    assert(timeInstruction(0xF0) == 3)
-
-    -- LD [C], A
-    resetVM()
-    setRegC(0x82); setRegA(0x7C)
-    testRun {0xE2}
-    assert(getMem(0xFF82) == 0x7C)
-    assert(timeInstruction(0xE2) == 2)
-
-    -- LD A, [C]
-    resetVM()
-    setRegC(0x83); setMem(0xFF83, 0x8D)
-    testRun {0xF2}
-    assert(getRegA() == 0x8D)
-    assert(timeInstruction(0xF2) == 2)
-
-    -- LD [a16], A
-    resetVM()
-    setRegA(0x9E)
-    testRun {0xEA, 0x00, 0xC0}
-    assert(getMem(0xC000) == 0x9E)
-    assert(timeInstruction(0xEA) == 4)
-
-    -- LD A, [a16]
-    resetVM()
-    setMem(0xC001, 0xAF)
-    testRun {0xFA, 0x01, 0xC0}
-    assert(getRegA() == 0xAF)
-    assert(timeInstruction(0xFA) == 4)
-
-    resetVM()
-end)
-
--- return extra goodies
-
-vm.getMem = getMem
 
 return vm
