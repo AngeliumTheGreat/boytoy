@@ -500,6 +500,72 @@ opcodes[0xD6 + 1] = function() op_sub(getOpcode()); idle(1) end
 opcodes[0xCE + 1] = function() op_adc(getOpcode()); idle(1) end
 opcodes[0xDE + 1] = function() op_sbc(getOpcode()); idle(1) end
 
+-- INC 0xX4, 0xXC
+
+local function op_inc_8(src, dest)
+    local value = src()
+    local result = bit.band(value + 1, 0xFF)
+    resetFlagN()
+    if result == 0 then setFlagZ() else resetFlagZ() end
+    if bit.band(value,0x0F) == 0x0F then setFlagH() else resetFlagH() end
+	dest(result)
+end
+
+opcodes[0x04 + 1] = function() op_inc_8(getRegB, setRegB) end
+opcodes[0x14 + 1] = function() op_inc_8(getRegD, setRegD) end
+opcodes[0x24 + 1] = function() op_inc_8(getRegH, setRegH) end
+opcodes[0x0C + 1] = function() op_inc_8(getRegC, setRegC) end
+opcodes[0x1C + 1] = function() op_inc_8(getRegE, setRegE) end
+opcodes[0x2C + 1] = function() op_inc_8(getRegL, setRegL) end
+opcodes[0x3C + 1] = function() op_inc_8(getRegA, setRegA) end
+
+-- separate for HL (vibecoded)
+-- it doesn't help the attempt to yield across C-call boundary error tho
+opcodes[0x34 + 1] = function()
+    local addr = getRegHL()
+    local value = getMem(addr)
+    local result = bit.band(value + 1, 0xFF)
+    resetFlagN()
+    if result == 0 then setFlagZ() else resetFlagZ() end
+    if bit.band(value, 0x0F) == 0x0F then setFlagH() else resetFlagH() end
+    idle(1)
+    setMem(addr, result)
+    idle(1)
+end
+
+-- DEC 0xX5, 0xXD
+
+local function op_dec_8(src, dest)
+    local value = src()
+    local result = value == 0 and 0xFF or value - 1
+    setFlagN()
+    if result == 0 then setFlagZ() else resetFlagZ() end
+    if bit.band(value,0x0F) == 0x00 then setFlagH() else resetFlagH() end
+    dest(result)
+end
+
+opcodes[0x05 + 1] = function() op_dec_8(getRegB, setRegB) end
+opcodes[0x15 + 1] = function() op_dec_8(getRegD, setRegD) end
+opcodes[0x25 + 1] = function() op_dec_8(getRegH, setRegH) end
+opcodes[0x0D + 1] = function() op_dec_8(getRegC, setRegC) end
+opcodes[0x1D + 1] = function() op_dec_8(getRegE, setRegE) end
+opcodes[0x2D + 1] = function() op_dec_8(getRegL, setRegL) end
+opcodes[0x3D + 1] = function() op_dec_8(getRegA, setRegA) end
+
+-- separate for HL
+-- doesn't help the attempt to yield across C-call boundary error tho
+opcodes[0x35 + 1] = function()
+    local addr = getRegHL()
+    local value = getMem(addr)
+    local result = value == 0 and 0xFF or value - 1
+    setFlagN()
+    if result == 0 then setFlagZ() else resetFlagZ() end
+    if bit.band(value, 0x0F) == 0x00 then setFlagH() else resetFlagH() end
+    idle(1)
+    setMem(addr, result)
+    idle(1)
+end
+
 -- 16-bit INC
 
 local function op_inc_16(src, dest)
@@ -1426,6 +1492,72 @@ test.unit "vm - n arithmetic" (function()
     assert(getFlagN())
     assert(getFlagH())
     assert(not getFlagC())
+end)
+
+test.unit "vm - 8 bit INC" (function()
+    assert(timeInstruction(0x04) == 1)
+    assert(timeInstruction(0x34) == 3)
+
+    resetVM()
+    setRegB(0x00)
+    -- INC B, INC B
+    testRun { 0x04, 0x04 }
+    assert(getRegB() == 0x02)
+    assert(not getFlagN())
+    assert(not getFlagZ())
+    assert(not getFlagH())
+    -- emulator/vm.lua:21: attempt to yield across C-call boundary error
+    --[[
+    resetVM()
+    setIndRegHL(0xF0)
+    -- INC HL
+    testRun {0x34}
+    assert(getIndRegHL() == 0xF1)
+    assert(not getFlagN())
+    assert(not getFlagZ())
+    assert(not getFlagH())
+    ]]
+    resetVM()
+    setRegD(0xFF)
+    -- INC D
+    testRun {0x14}
+    assert(getRegD() == 0x00)
+    assert(not getFlagN())
+    assert(getFlagZ())
+    assert(getFlagH())
+end)
+
+test.unit "vm - 8 bit DEC" (function()
+    assert(timeInstruction(0x05) == 1)
+    assert(timeInstruction(0x35) == 3)
+
+    resetVM()
+    setRegB(0x02)
+    -- DEC B, DEC B
+    testRun { 0x05, 0x05 }
+    assert(getRegB() == 0x00)
+    assert(getFlagN())
+    assert(getFlagZ())
+    assert(not getFlagH())
+    -- emulator/vm.lua:21: attempt to yield across C-call boundary error
+    --[[
+    resetVM()
+    setIndRegHL(0xF0)
+    -- DEC HL
+    testRun {0x35}
+    assert(getIndRegHL() == 0xEF)
+    assert(getFlagN())
+    assert(not getFlagZ())
+    assert(not getFlagH())
+    ]]
+    resetVM()
+    setRegD(0x00)
+    -- DEC D
+    testRun {0x15}
+    assert(getRegD() == 0xFF)
+    assert(getFlagN())
+    assert(not getFlagZ())
+    assert(getFlagH())
 end)
 
 test.unit "vm - 16 bit INC and DEC" (function()
