@@ -622,6 +622,65 @@ opcodes[0xF9 + 1] = function()
     idle(1)
 end
 
+-- DAA, 0x27 (evil fucked up BCD adjuster)
+opcodes[0x27 + 1] = function()
+    local a = getRegA()
+    local correction = 0
+    local carry = getFlagC()
+
+    if not getFlagN() then
+        if getFlagH() or bit.band(a, 0x0F) > 9 then
+            correction = correction + 0x06
+        end
+
+        if carry or a > 0x99 then
+            correction = correction + 0x60
+            carry = true
+        end
+
+        a = bit.band(a + correction, 0xFF)
+    else
+        if getFlagH() then
+            correction = correction + 0x06
+        end
+
+        if carry then
+            correction = correction + 0x60
+        end
+
+        a = bit.band(a - correction, 0xFF)
+    end
+
+    setRegA(a)
+    if a==0 then setFlagZ() else resetFlagZ() end
+    resetFlagH()
+    if carry then setFlagC() else resetFlagC() end
+end
+
+
+-- SCF, 0x37
+opcodes[0x37 + 1] = function() 
+    resetFlagN()
+    resetFlagH()
+    setFlagC()
+end
+
+-- CPL, 0x2F
+opcodes[0x2F + 1] = function() 
+    setFlagN()
+    setFlagH()
+    setRegA(bit.bxor(getRegA(), 0xFF))
+end
+
+-- CCF, 0x3F
+opcodes[0x3F + 1] = function() 
+    resetFlagN()
+    resetFlagH()
+    if getFlagC() then resetFlagC() else setFlagC() end
+end
+
+-- no tests im lazy
+
 ----------------------
 -- prefixed opcodes --
 ----------------------
