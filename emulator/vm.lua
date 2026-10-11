@@ -681,6 +681,36 @@ end
 
 -- no tests im lazy
 
+function op_add_16(src,dest)
+    local value = src()
+    local hl = getRegHL()
+    local halfCarry = (hl % 0x1000) + (value % 0x1000) > 0x0FFF
+    local carry = hl + value > 0xFFFF
+    setRegHL(bit.band(hl + value, 0xFFFF))
+    setFlags(getFlagZ(), false, halfCarry, carry)
+    idle(1)
+end
+
+-- 16-bit ADD, 0xX9
+opcodes[0x09 + 1] = function() op_add_16(getRegBC) end
+opcodes[0x19 + 1] = function() op_add_16(getRegDE) end
+opcodes[0x29 + 1] = function() op_add_16(getRegHL) end
+opcodes[0x39 + 1] = function() op_add_16(getSP) end
+
+-- ADD SP, e, 0xE8
+opcodes[0xE8 + 1] = function()
+    local offset = getOpcode()
+    local signedOffset = toSigned8(offset)
+    local sp = getSP()
+    local halfCarry = bit.band(sp, 0x0F) + bit.band(offset, 0x0F) > 0x0F
+    local carry = bit.band(sp, 0xFF) + offset > 0xFF
+    setSP(bit.band(sp + signedOffset, 0xFFFF))
+    setFlags(false, false, halfCarry, carry)
+    idle(3)
+end
+
+-- no tests im lazy
+
 ----------------------
 -- prefixed opcodes --
 ----------------------
