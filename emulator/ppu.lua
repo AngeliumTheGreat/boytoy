@@ -1,5 +1,8 @@
+-- function to get and set memory at the address
 local getMem = vm.getMem
+local setMem = vm.getMem
 
+-- do a certain number of yields
 local function idle(n)
 	for i=1,n do
 		coroutine.yield()
@@ -16,30 +19,49 @@ local function timeInstruction(instruction)
 	return i
 end
 
+-- get a bit of a byte
 local function getBit(byte, n)
 	return (byte & bit.lshift(1,n))  ~= 0
 end
 
-local function scanline()
+-- background and window pixel Fetcher
+local function fetchBg()
+	-- fetch tile number
+	-- fetch tile data (low)
+	-- fetch tile data (high)
+	-- push to fifo
+end
+
+-- sprite pixel Fetcher
+local function fetchSprite()
+	-- fetch tile number
+	-- fetch tile data (low)
+	-- fetch tile data (high)
+	-- push to fifo
+end
+
+-- doing one line of 160 pixels
+local function scanline(LY)
 
 	-- run every 456 T-cycles
 	
 	-- OAM Scan (Mode 2)
 	-- 80 T-cycles, 2 per sprite
+	setMem(0xFF41, bit.bor(bit.band(getMem(0xFF41), 0xFE), 0x02)) -- set bits 1-2 of LCD status register to 10 (OAM Scan mode)
 
 	local sprite_buffer = {}
 
-	local begin = 0xFE00  -- first byte of OAM memory
+	local OAM_begin = 0xFE00  -- first byte of OAM memory
 	for i=1,40 do
 		-- get stuff from OAM
-		local offset = (i-1)*4 -- how much we need to shift to get i'th sprite
-		local y_pos = getMem(begin + offset)
-		local x_pos = getMem(begin + offset + 1)
-		local tile_number = getMem(begin + offset + 2)
-		local sprite_flags = getMem(begin + offset + 3)
+		local OAM_offset = (i - 1) * 4 -- how much we need to shift to get i'th sprite
+		local y_pos = getMem(OAM_begin + OAM_offset)
+		local x_pos = getMem(OAM_begin + OAM_offset + 1)
+		local tile_number = getMem(OAM_begin + OAM_offset + 2)
+		local sprite_flags = getMem(OAM_begin + OAM_offset + 3)
 		-- add to buffer if conditions apply
-		local LCD = getMem(0xFF40) -- flags
-		local tall_sprites = getBit(LCD, 2) -- flag that says if sprites should be tall
+		local LCDC = getMem(0xFF40) -- flags
+		local tall_sprites = getBit(LCDC, 2) -- flag that says if sprites should be tall
 		local sprite_height = tall_sprites and 16 or 8
 		local current_sprites_number = 0
 		if current_sprites_number < 10
@@ -52,13 +74,27 @@ local function scanline()
 			sprite_buffer[sprite_place + 1] = x_pos
 			sprite_buffer[sprite_place + 2] = tile_number
 			sprite_buffer[sprite_place + 3] = sprite_flags
+			current_sprites_number = current_sprites_number + 1
 		end
 		idle(2)
 	end
 
 	
 	-- Drawing (Mode 3)
-	
-	-- H-Blank (Mode 0)
-end
+	setMem(0xFF41, bit.bor(getMem(0xFF41), 0x03)) -- set bits 1-2 of LCD status register to 11 (Drawing mode)
 
+	drawing_t_cycles = 0
+
+	bg_fifo = {}
+	sprite_fifo = {}
+
+	x_position_counter = 0
+
+	while x_position_counter < 160 do
+		-- drawing loop
+	end
+
+
+	-- H-Blank (Mode 0)
+	setMem(0xFF41, bit.band(getMem(0xFF41), 0xFC)) -- set bits 1-2 of LCD status register to 00 (H-Blank mode)
+end
