@@ -1952,7 +1952,7 @@ local function op_swap(src, dest)
     local l = src()
     local h = bit.lshift(l, 4)
     l = bit.rshift(l, 4)
-    local b = h + l
+    local b = bit.band(h + l, 0xFF)
     setFlags(b == 0x00, false, false, false)
     dest(b)
 end
