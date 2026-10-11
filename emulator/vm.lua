@@ -597,22 +597,22 @@ opcodes[0x08 + 1] = function()
     local nn_lsb = getOpcode()
     local nn_msb = getOpcode()
     local nn = 256 * nn_msb + nn_lsb
-    local sp = getSP()
+    local stack = getSP()
 
-    setMem(nn, sp % 0x100)
-    setMem((nn + 1) % 0x10000, math.floor(sp / 0x100))
+    setMem(nn, stack % 0x100)
+    setMem((nn + 1) % 0x10000, math.floor(stack / 0x100))
     idle(4)
 end
 
 opcodes[0xF8 + 1] = function()
     local offset = getOpcode()
-    local sp = getSP()
-    local result = (sp + toSigned8(offset)) % 0x10000
+    local stack = getSP()
+    local result = (stack + toSigned8(offset)) % 0x10000
     setFlags(
         false,
         false,
-        (sp % 0x10) + (offset % 0x10) > 0x0F,
-        (sp % 0x100) + offset > 0xFF
+        (stack % 0x10) + (offset % 0x10) > 0x0F,
+        (stack % 0x100) + offset > 0xFF
     )
     setRegHL(result)
     idle(2)
@@ -699,13 +699,31 @@ opcodes[0x39 + 1] = function() op_add_16(getSP) end
 opcodes[0xE8 + 1] = function()
     local offset = getOpcode()
     local signedOffset = toSigned8(offset)
-    local sp = getSP()
-    local halfCarry = bit.band(sp, 0x0F) + bit.band(offset, 0x0F) > 0x0F
-    local carry = bit.band(sp, 0xFF) + offset > 0xFF
-    setSP(bit.band(sp + signedOffset, 0xFFFF))
+    local stack = getSP()
+    local halfCarry = bit.band(stack, 0x0F) + bit.band(offset, 0x0F) > 0x0F
+    local carry = bit.band(stack, 0xFF) + offset > 0xFF
+    setSP(bit.band(stack + signedOffset, 0xFFFF))
     setFlags(false, false, halfCarry, carry)
     idle(3)
 end
+
+function op_ret()
+    local lsb = getMem(sp); sp = bit.band(sp + 1, 0xFFFF)
+    local msb = getMem(sp); sp = bit.band(sp + 1, 0xFFFF)
+    pc = bit.band(bit.lshift(msb,8) + lsb, 0xFFFF) + 1
+end
+
+-- RET, 0xC9
+opcodes[0xC9 + 1] = function() op_ret(); idle(3) end
+
+-- RETI, 0xD9
+opcodes[0xD9 + 1] = function() op_ret(); IME = 1; idle(3) end
+
+-- RET c, 0xC8 0xD8 0xC0 0xD0
+opcodes[0xC0 + 1] = function() if not getFlagZ() then op_ret(); idle(4) else idle(1) end end
+opcodes[0xD0 + 1] = function() if not getFlagC() then op_ret(); idle(4) else idle(1) end end
+opcodes[0xC8 + 1] = function() if getFlagZ() then op_ret(); idle(4) else idle(1) end end
+opcodes[0xD8 + 1] = function() if getFlagC() then op_ret(); idle(4) else idle(1) end end
 
 ----------------------
 -- prefixed opcodes --
@@ -1777,6 +1795,113 @@ test.unit "vm - DAA, SCF, CPL, CCF" (function()
 
     testLenBuffer = oldTestLenBuffer
 end)
+
+
+test.unit "vm - RET" (function()
+    local oldTestLenBuffer = testLenBuffer
+
+    -- RET: pop address 0x1234 from stack
+    resetVM()
+    setSP(0xC100)
+    setMem(0xC100, 0x34)
+    setMem(0xC101, 0x12)
+    testLenBuffer = 3 -- RET takes 4 M-cycles
+    testRun({0xC9})
+    assert(pc == 0x1235)
+    assert(getSP() == 0xC102)
+
+    -- RETI: pop address and enable IME
+    resetVM()
+    IME = 0
+    setSP(0xC100)
+    setMem(0xC100, 0x78)
+    setMem(0xC101, 0x56)
+    testLenBuffer = 3
+    testRun({0xD9})
+    assert(pc == 0x5679)
+    assert(getSP() == 0xC102)
+    assert(IME == 1)
+
+    -- RET NZ taken: Z=0
+    resetVM()
+    resetFlagZ()
+    setSP(0xC100)
+    setMem(0xC100, 0xCD)
+    setMem(0xC101, 0xAB)
+    testLenBuffer = 4 -- taken RET cc takes 5 M-cycles
+    testRun({0xC0})
+    assert(pc == 0xABCE)
+    assert(getSP() == 0xC102)
+
+    -- RET NZ not taken: Z=1
+    resetVM()
+    setFlagZ()
+    setSP(0xC100)
+    setMem(0xC100, 0xCD)
+    setMem(0xC101, 0xAB)
+    testLenBuffer = 1 -- not taken RET cc takes 2 M-cycles
+    testRun({0xC0})
+    assert(pc == 2)
+    assert(getSP() == 0xC100)
+
+    -- RET Z taken: Z=1
+    resetVM()
+    setFlagZ()
+    setSP(0xC100)
+    setMem(0xC100, 0x11)
+    setMem(0xC101, 0x22)
+    testLenBuffer = 4
+    testRun({0xC8})
+    assert(pc == 0x2212)
+    assert(getSP() == 0xC102)
+
+    -- RET Z not taken: Z=0
+    resetVM()
+    resetFlagZ()
+    setSP(0xC100)
+    setMem(0xC100, 0x11)
+    setMem(0xC101, 0x22)
+    testLenBuffer = 1
+    testRun({0xC8})
+    assert(pc == 2)
+    assert(getSP() == 0xC100)
+
+    -- RET NC taken: C=0
+    resetVM()
+    resetFlagC()
+    setSP(0xC100)
+    setMem(0xC100, 0xAA)
+    setMem(0xC101, 0xBB)
+    testLenBuffer = 4
+    testRun({0xD0})
+    assert(pc == 0xBBAA + 1)
+    assert(getSP() == 0xC102)
+
+    -- RET C taken: C=1
+    resetVM()
+    setFlagC()
+    setSP(0xC100)
+    setMem(0xC100, 0xEF)
+    setMem(0xC101, 0xBE)
+    testLenBuffer = 4
+    testRun({0xD8})
+    assert(pc == 0xBEF0)
+    assert(getSP() == 0xC102)
+
+    -- RET C not taken: C=0
+    resetVM()
+    resetFlagC()
+    setSP(0xC100)
+    setMem(0xC100, 0xEF)
+    setMem(0xC101, 0xBE)
+    testLenBuffer = 1
+    testRun({0xD8})
+    assert(pc == 2)
+    assert(getSP() == 0xC100)
+
+    testLenBuffer = oldTestLenBuffer
+end)
+
 
 test.unit "vm - 16 bit ADD" (function()
     local oldTestLenBuffer = testLenBuffer
