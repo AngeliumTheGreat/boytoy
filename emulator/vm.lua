@@ -679,8 +679,6 @@ opcodes[0x3F + 1] = function()
     if getFlagC() then resetFlagC() else setFlagC() end
 end
 
--- no tests im lazy
-
 function op_add_16(src,dest)
     local value = src()
     local hl = getRegHL()
@@ -708,8 +706,6 @@ opcodes[0xE8 + 1] = function()
     setFlags(false, false, halfCarry, carry)
     idle(3)
 end
-
--- no tests im lazy
 
 ----------------------
 -- prefixed opcodes --
@@ -1684,6 +1680,180 @@ test.unit "vm - LD 16-bit instructions" (function()
     setRegHL(0xBEEF)
     testRun({0xF9})
     assert(getSP() == 0xBEEF)
+end)
+
+test.unit "vm - DAA, SCF, CPL, CCF" (function()
+    local oldTestLenBuffer = testLenBuffer
+    testLenBuffer = 0
+
+    -- DAA after addition: 0x09 + 0x01 -> 0x0A, then adjust to 0x10
+    resetVM()
+    setRegA(0x0A)
+    resetFlagN()
+    resetFlagH()
+    resetFlagC()
+    testRun({0x27})
+    assert(getRegA() == 0x10)
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- DAA: correction sets carry
+    resetVM()
+    setRegA(0x9A)
+    resetFlagN()
+    resetFlagH()
+    resetFlagC()
+    testRun({0x27})
+    assert(getRegA() == 0x00)
+    assert(getFlagZ())
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(getFlagC())
+
+    -- DAA after subtraction: 0x10 - 0x01 -> 0x0F
+    resetVM()
+    setRegA(0x0F)
+    setFlagN()
+    setFlagH()
+    resetFlagC()
+    testRun({0x27})
+    assert(getRegA() == 0x09)
+    assert(not getFlagZ())
+    assert(getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- SCF: set carry, clear N and H, preserve Z
+    resetVM()
+    setFlagZ()
+    setFlagN()
+    setFlagH()
+    resetFlagC()
+    testRun({0x37})
+    assert(getFlagZ())
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(getFlagC())
+
+    -- CPL: invert A, set N and H, preserve Z and C
+    resetVM()
+    setRegA(0x35)
+    setFlagZ()
+    resetFlagN()
+    resetFlagH()
+    setFlagC()
+    testRun({0x2F})
+    assert(getRegA() == 0xCA)
+    assert(getFlagZ())
+    assert(getFlagN())
+    assert(getFlagH())
+    assert(getFlagC())
+
+    -- CCF: toggle carry from 0 to 1, clear N and H, preserve Z
+    resetVM()
+    setFlagZ()
+    setFlagN()
+    setFlagH()
+    resetFlagC()
+    testRun({0x3F})
+    assert(getFlagZ())
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(getFlagC())
+
+    -- CCF: toggle carry from 1 to 0
+    resetVM()
+    resetFlagZ()
+    setFlagN()
+    setFlagH()
+    setFlagC()
+    testRun({0x3F})
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    testLenBuffer = oldTestLenBuffer
+end)
+
+test.unit "vm - 16 bit ADD" (function()
+    local oldTestLenBuffer = testLenBuffer
+
+    -- ADD HL, BC: 0x1111 + 0x1234 = 0x2345
+    resetVM()
+    setRegHL(0x1111)
+    setRegBC(0x1234)
+    setFlagZ()
+    testLenBuffer = 1 -- 1-byte program, 2 M-cycles total
+    testRun({0x09})
+    assert(getRegHL() == 0x2345)
+    assert(getFlagZ()) -- Z is preserved
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- ADD HL, DE: half-carry from bit 11
+    -- 0x0FFF + 0x0001 = 0x1000
+    resetVM()
+    setRegHL(0x0FFF)
+    setRegDE(0x0001)
+    testLenBuffer = 1
+    testRun({0x19})
+    assert(getRegHL() == 0x1000)
+    assert(not getFlagN())
+    assert(getFlagH())
+    assert(not getFlagC())
+
+    -- ADD HL, HL: 0x8000 + 0x8000 = 0x0000
+    resetVM()
+    setRegHL(0x8000)
+    setFlagZ()
+    testLenBuffer = 1
+    testRun({0x29})
+    assert(getRegHL() == 0x0000)
+    assert(getFlagZ()) -- Z is preserved even when result is zero
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(getFlagC())
+
+    -- ADD HL, SP: 0xFFFF + 0x0001 = 0x0000
+    resetVM()
+    setRegHL(0xFFFF)
+    setSP(0x0001)
+    testLenBuffer = 1
+    testRun({0x39})
+    assert(getRegHL() == 0x0000)
+    assert(not getFlagN())
+    assert(getFlagH())
+    assert(getFlagC())
+
+    -- ADD SP, e8: SP=0x0000, offset=0xFF (-1)
+    -- Result = 0xFFFF. H/C use the unsigned offset.
+    resetVM()
+    setSP(0x0000)
+    testLenBuffer = 2 -- 2-byte program, 4 M-cycles total
+    testRun({0xE8, 0xFF})
+    assert(getSP() == 0xFFFF)
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(not getFlagH())
+    assert(not getFlagC())
+
+    -- ADD SP, e8: SP=0x00FF, offset=0x01
+    -- Result = 0x0100, H and C are both set.
+    resetVM()
+    setSP(0x00FF)
+    testLenBuffer = 2
+    testRun({0xE8, 0x01})
+    assert(getSP() == 0x0100)
+    assert(not getFlagZ())
+    assert(not getFlagN())
+    assert(getFlagH())
+    assert(getFlagC())
+
+    testLenBuffer = oldTestLenBuffer
 end)
 
 local function op_push(src_high, src_low)
