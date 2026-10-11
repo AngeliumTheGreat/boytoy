@@ -98,6 +98,7 @@ local function resetVM()
     for i=1,0x10000 do memory[i]=0 end
     reg_A=0; reg_F=0; reg_B=0; reg_C=0; reg_D=0; reg_E=0; reg_H=0; reg_L=0; reg_IE=0; reg_IR=0
     pc = 1
+    sp = 0xFFFE
     IME = 0
 end
 
@@ -1689,8 +1690,44 @@ test.unit "vm - LD 16-bit instructions" (function()
 end)
 
 local function op_push(src_high, src_low)
-
+    idle(3)
+    sp = bit.band(sp - 1, 0xFFFF)
+    if sp < 0 then sp = 0xFFFF end
+    setMem(sp, src_high())
+    sp = bit.band(sp - 1, 0xFFFF)
+    setMem(sp, src_low())
 end
+
+opcodes[0xC5 + 1] = function() op_push(getRegB, getRegC) end
+opcodes[0xD5 + 1] = function() op_push(getRegD, getRegE) end
+opcodes[0xE5 + 1] = function() op_push(getRegH, getRegL) end
+opcodes[0xF5 + 1] = function() op_push(getRegA, getRegF) end
+
+local function op_pop(dest_high, dest_low)
+    idle(2)
+    dest_low(getMem(sp))
+    sp = bit.band(sp + 1, 0xFFFF)
+    dest_high(getMem(sp))
+    sp = bit.band(sp + 1, 0xFFFF)
+end
+
+opcodes[0xC1 + 1] = function() op_pop(setRegB, setRegC) end
+opcodes[0xD1 + 1] = function() op_pop(setRegD, setRegE) end
+opcodes[0xE1 + 1] = function() op_pop(setRegH, setRegL) end
+opcodes[0xF1 + 1] = function() op_pop(setRegA, setRegF) end
+
+test.unit "vm - PUSH and POP" (function()
+    test.assert_equal(timeInstruction(0xD5), 4)
+    test.assert_equal(timeInstruction(0xF1), 3)
+    
+    resetVM()
+    setRegAF(0x2380); setRegBC(0x5234)
+    -- PUSH AF, PUSH BC, POP DE, POP HL
+    testRun { 0xF5, 0xC5, 0xD1, 0xE1 }
+    test.assert_equal(getRegDE(), 0x5234)
+    test.assert_equal(getRegHL(), 0x2380)
+    resetVM()
+end)
 
 ----------------------
 -- prefixed opcodes --
