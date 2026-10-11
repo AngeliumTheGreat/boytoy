@@ -726,6 +726,25 @@ opcodes[0xD0 + 1] = function() if not getFlagC() then op_ret(); idle(4) else idl
 opcodes[0xC8 + 1] = function() if getFlagZ() then op_ret(); idle(4) else idle(1) end end
 opcodes[0xD8 + 1] = function() if getFlagC() then op_ret(); idle(4) else idle(1) end end
 
+function op_rst(n)
+    local lsb = bit.band(pc,0xFF)
+    local msb = bit.rshift(pc-lsb,8)
+    sp = bit.band(sp-1,0xFFFF); setMem(sp,msb)
+    sp = bit.band(sp-1,0xFFFF); setMem(sp,lsb)
+    pc = n
+    idle(3)
+end
+
+-- RST, 0xX7 0xXF
+opcodes[0xC7 + 1] = function() op_rst(0x00+1) end
+opcodes[0xD7 + 1] = function() op_rst(0x10+1) end
+opcodes[0xE7 + 1] = function() op_rst(0x20+1) end
+opcodes[0xF7 + 1] = function() op_rst(0x30+1) end
+opcodes[0xCF + 1] = function() op_rst(0x08+1) end
+opcodes[0xDF + 1] = function() op_rst(0x18+1) end
+opcodes[0xEF + 1] = function() op_rst(0x28+1) end
+opcodes[0xFF + 1] = function() op_rst(0x38+1) end
+
 ----------------------
 -- prefixed opcodes --
 ----------------------
@@ -1903,6 +1922,84 @@ test.unit "vm - RET" (function()
     testLenBuffer = oldTestLenBuffer
 end)
 
+test.unit "vm - RST" (function()
+    local oldTestLenBuffer = testLenBuffer
+    testLenBuffer = 3
+
+    -- RST 00H (0xC7)
+    resetVM()
+    setSP(0xFFFE)
+    testRun({0xC7})
+    assert(pc == 0x0001)
+    assert(sp == 0xFFFC)
+    assert(getMem(0xFFFD) == 0x00) -- Return address high byte
+    assert(getMem(0xFFFC) == 0x02) -- Return address low byte
+
+    -- RST 08H (0xCF)
+    resetVM()
+    setSP(0xFFFE)
+    testRun({0xCF})
+    assert(pc == 0x0009)
+    assert(sp == 0xFFFC)
+    assert(getMem(0xFFFD) == 0x00)
+    assert(getMem(0xFFFC) == 0x02)
+
+    -- RST 10H (0xD7)
+    resetVM()
+    setSP(0xFFFE)
+    testRun({0xD7})
+    assert(pc == 0x0011)
+    assert(sp == 0xFFFC)
+    assert(getMem(0xFFFD) == 0x00)
+    assert(getMem(0xFFFC) == 0x02)
+
+    -- RST 18H (0xDF)
+    resetVM()
+    setSP(0xFFFE)
+    testRun({0xDF})
+    assert(pc == 0x0019)
+    assert(sp == 0xFFFC)
+    assert(getMem(0xFFFD) == 0x00)
+    assert(getMem(0xFFFC) == 0x02)
+
+    -- RST 20H (0xE7)
+    resetVM()
+    setSP(0xFFFE)
+    testRun({0xE7})
+    assert(pc == 0x0021)
+    assert(sp == 0xFFFC)
+    assert(getMem(0xFFFD) == 0x00)
+    assert(getMem(0xFFFC) == 0x02)
+
+    -- RST 28H (0xEF)
+    resetVM()
+    setSP(0xFFFE)
+    testRun({0xEF})
+    assert(pc == 0x0029)
+    assert(sp == 0xFFFC)
+    assert(getMem(0xFFFD) == 0x00)
+    assert(getMem(0xFFFC) == 0x02)
+
+    -- RST 30H (0xF7)
+    resetVM()
+    setSP(0xFFFE)
+    testRun({0xF7})
+    assert(pc == 0x0031)
+    assert(sp == 0xFFFC)
+    assert(getMem(0xFFFD) == 0x00)
+    assert(getMem(0xFFFC) == 0x02)
+
+    -- RST 38H (0xFF)
+    resetVM()
+    setSP(0xFFFE)
+    testRun({0xFF})
+    assert(pc == 0x0039)
+    assert(sp == 0xFFFC)
+    assert(getMem(0xFFFD) == 0x00)
+    assert(getMem(0xFFFC) == 0x02)
+
+    testLenBuffer = oldTestLenBuffer
+end)
 
 test.unit "vm - 16 bit ADD" (function()
     local oldTestLenBuffer = testLenBuffer
