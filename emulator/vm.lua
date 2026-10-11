@@ -745,6 +745,31 @@ opcodes[0xDF + 1] = function() op_rst(0x18+1) end
 opcodes[0xEF + 1] = function() op_rst(0x28+1) end
 opcodes[0xFF + 1] = function() op_rst(0x38+1) end
 
+function op_call(condition)
+    local nn_lsb = getOpcode()
+    local nn_msb = getOpcode()
+    local nn = 256 * nn_msb + nn_lsb
+    if condition then
+        local lsb = bit.band(pc, 0xFF)
+        local msb = bit.rshift(pc - lsb, 8)
+        sp = bit.band(sp - 1, 0xFFFF); setMem(sp, msb)
+        sp = bit.band(sp - 1, 0xFFFF); setMem(sp, lsb)
+        pc = nn + 1
+        idle(5)
+    else
+        idle(2)
+    end
+end
+
+-- CALL, 0xC4/D4/CC/DC/CD
+opcodes[0xC4 + 1] = function() op_call(not getFlagZ()) end
+opcodes[0xD4 + 1] = function() op_call(not getFlagC()) end
+opcodes[0xCC + 1] = function() op_call(getFlagZ()) end
+opcodes[0xDC + 1] = function() op_call(getFlagC()) end
+opcodes[0xCD + 1] = function() op_call(true) end
+
+-- add test here later maybe
+
 ----------------------
 -- prefixed opcodes --
 ----------------------
