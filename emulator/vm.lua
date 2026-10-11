@@ -175,6 +175,8 @@ for i, dest in ipairs {setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, set
     end
 end
 
+-- also implement HALT here
+
 -- LD, 0xX2
 opcodes[0x02+1] = function() setMem(getRegBC(), getRegA()); idle(1)  end
 opcodes[0x12+1] = function() setMem(getRegDE(), getRegA()); idle(1) end
@@ -680,7 +682,7 @@ opcodes[0x3F + 1] = function()
     if getFlagC() then resetFlagC() else setFlagC() end
 end
 
-function op_add_16(src,dest)
+local function op_add_16(src,dest)
     local value = src()
     local hl = getRegHL()
     local halfCarry = (hl % 0x1000) + (value % 0x1000) > 0x0FFF
@@ -708,7 +710,7 @@ opcodes[0xE8 + 1] = function()
     idle(3)
 end
 
-function op_ret()
+local function op_ret()
     local lsb = getMem(sp); sp = bit.band(sp + 1, 0xFFFF)
     local msb = getMem(sp); sp = bit.band(sp + 1, 0xFFFF)
     pc = bit.band(bit.lshift(msb,8) + lsb, 0xFFFF) + 1
@@ -2147,10 +2149,6 @@ end)
 ----------------------
 -- prefixed opcodes --
 ----------------------
-
-local prefixed_opcodes = {}
-
-opcodes[0xCB+1] = function() idle(1); prefixed_opcodes[getOpcode() + 1]() end
 
 -- RLC
 do
