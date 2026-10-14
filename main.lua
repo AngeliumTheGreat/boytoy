@@ -1,8 +1,8 @@
 local test = require "util.test"
 test.enable()
 
-local _, settings = pcall(require, "settings")
-local keybindings = settings.keybindings
+local _, conf = pcall(require, "conf")
+local keybindings = conf.keybindings
 
 local love = require "love"
 local vm = require "emulator.vm"

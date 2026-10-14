@@ -1,3 +1,4 @@
+local vm = require "vm"
 -- function to get and set memory at the address
 local getMem = vm.getMem
 local setMem = vm.getMem
@@ -21,7 +22,7 @@ end
 
 -- get a bit of a byte
 local function getBit(byte, n)
-	return (byte & bit.lshift(1,n))  ~= 0
+	return (bit.band(byte, bit.lshift(1,n)))  ~= 0
 end
 
 -- background and window pixel Fetcher
@@ -64,6 +65,7 @@ local function scanline(LY)
 		local tall_sprites = getBit(LCDC, 2) -- flag that says if sprites should be tall
 		local sprite_height = tall_sprites and 16 or 8
 		local current_sprites_number = 0
+		-- ^ this resets every iteration. move somewhere else to fix
 		if current_sprites_number < 10
 			and x_pos > 0
 			and LY + 16 >= y_pos
