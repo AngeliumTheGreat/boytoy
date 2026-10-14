@@ -2,6 +2,10 @@ local test = require "util.test"
 local vm = {}
 local pc = 1
 local sp = 0xFFFE
+-- cpu halted state
+local halted = false
+-- cpu stopped state (why even)
+local stopped = false
 
 -- memory 
 local memory = {}
@@ -31,8 +35,8 @@ local reg_D = 0
 local reg_E = 0
 local reg_H = 0
 local reg_L = 0
-local reg_IE = 0
-local reg_IR = 0
+-- IE is 0xFFFF
+-- IF is 0xFF0F
 
 -- interrupt master enable
 local IME = 0
@@ -96,10 +100,20 @@ end
 -- reset
 local function resetVM()
     for i=1,0x10000 do memory[i]=0 end
-    reg_A=0; reg_F=0; reg_B=0; reg_C=0; reg_D=0; reg_E=0; reg_H=0; reg_L=0; reg_IE=0; reg_IR=0
+    reg_A=0; reg_F=0; reg_B=0; reg_C=0; reg_D=0; reg_E=0; reg_H=0; reg_L=0
     pc = 1
     sp = 0xFFFE
     IME = 0
+end
+
+local function getLowestSetBit(x)
+    if x == 0 then return 0 end
+    local pos = 1
+    while bit.band(x, 1) == 0 do
+        x = bit.rshift(x, 1)
+        pos = pos + 1
+    end
+    return pos
 end
 
 -------------------------------------
@@ -108,10 +122,50 @@ end
 
 local opcodes = {}
 
+local function handleInterrupt(n)
+    IME = 0
+    -- clear this interrupt's request bit
+    setMem(0xFF0F, bit.band(getMem(0xFF0F), bit.bnot(bit.lshift(1, n))))
+    -- push return address
+    local ret = pc - 1
+    sp = bit.band(sp - 1, 0xFFFF); setMem(sp, bit.rshift(ret, 8))
+    sp = bit.band(sp - 1, 0xFFFF); setMem(sp, bit.band(ret, 0xFF))
+    pc = 0x40 + 8 * n + 1          -- vectors are 0x40, 0x48, 0x50, 0x58, 0x60
+    idle(5)
+end
+
+local function checkInterrupts()
+    local pending = bit.band(getMem(0xFFFF), getMem(0xFF0F), 0x1F)
+    if pending == 0 then return end
+
+    halted = false                  -- wakes HALT even if IME is 0
+
+    if IME == 1 then
+        handleInterrupt(getLowestSetBit(pending))
+    end
+end
+
 local function _cycle()
-    opcodes[getOpcode() + 1]()
+    if stopped then
+        idle(1)
+        return
+    end
+
+    if not halted then 
+        opcodes[getOpcode() + 1]()
+    end
+
+    -- why the fuck does EI need delay
+    if IME_next == 2 then
+        IME_next = 1
+    elseif IME_next == 1 then
+        IME = 1; IME_next = 0
+    end
+
+    checkInterrupts()   -- wakes HALT and dispatches if interrupts are enabled
     idle(1)
 end
+-- IMPORTANT: remember to actually also IMPLEMENT the fucking interrupt handlers
 
 local cycle = coroutine.wrap(function() while true do _cycle() end end)
 vm.cycle = cycle
@@ -175,7 +229,6 @@ for i, dest in ipairs {setRegB, setRegC, setRegD, setRegE, setRegH, setRegL, set
     end
 end
 
--- also implement HALT here
 
 -- LD, 0xX2
 opcodes[0x02+1] = function() setMem(getRegBC(), getRegA()); idle(1)  end
@@ -219,7 +272,23 @@ opcodes[0xFA+1] = function()
 
 -- DI, disable interrupts, 0xF3
 
-opcodes[0xF3+1] = function() IME=0 end
+opcodes[0xF3+1] = function() IME = 0 end
+
+-- EI, enable interrupts, 0xFB
+
+opcodes[0xFB+1] = function() IME_next = 2 end
+
+-- HALT, halt, 0x76
+
+opcodes[0x76+1] = function() halted = true end
+
+-- STOP, 0x10
+
+opcodes[0x10 + 1] = function()
+    getOpcode()              -- consume the padding byte
+    setMem(0xFF04, 0)        -- DIV resets when the clock stops
+    stopped = true
+end
 
 -- AND, 0xA0 to 0xA7, 0xE6
 
