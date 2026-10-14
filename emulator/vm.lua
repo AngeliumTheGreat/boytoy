@@ -729,8 +729,9 @@ opcodes[0xC8 + 1] = function() if getFlagZ() then op_ret(); idle(4) else idle(1)
 opcodes[0xD8 + 1] = function() if getFlagC() then op_ret(); idle(4) else idle(1) end end
 
 local function op_rst(n)
-    local lsb = bit.band(pc,0xFF)
-    local msb = bit.rshift(pc-lsb,8)
+    local ret = pc - 1
+    local lsb = bit.band(ret, 0xFF)
+    local msb = bit.rshift(ret, 8)
     sp = bit.band(sp-1,0xFFFF); setMem(sp,msb)
     sp = bit.band(sp-1,0xFFFF); setMem(sp,lsb)
     pc = n
@@ -752,8 +753,9 @@ local function op_call(condition)
     local nn_msb = getOpcode()
     local nn = 256 * nn_msb + nn_lsb
     if condition then
-        local lsb = bit.band(pc, 0xFF)
-        local msb = bit.rshift(pc - lsb, 8)
+        local ret = pc - 1
+        local lsb = bit.band(ret, 0xFF)
+        local msb = bit.rshift(ret, 8)
         sp = bit.band(sp - 1, 0xFFFF); setMem(sp, msb)
         sp = bit.band(sp - 1, 0xFFFF); setMem(sp, lsb)
         pc = nn + 1
@@ -1928,7 +1930,7 @@ test.unit "vm - RST" (function()
     assert(pc == 0x0001)
     assert(sp == 0xFFFC)
     assert(getMem(0xFFFD) == 0x00) -- Return address high byte
-    assert(getMem(0xFFFC) == 0x02) -- Return address low byte
+    assert(getMem(0xFFFC) == 0x01) -- Return address low byte
 
     -- RST 08H (0xCF)
     resetVM()
@@ -1937,7 +1939,7 @@ test.unit "vm - RST" (function()
     assert(pc == 0x0009)
     assert(sp == 0xFFFC)
     assert(getMem(0xFFFD) == 0x00)
-    assert(getMem(0xFFFC) == 0x02)
+    assert(getMem(0xFFFC) == 0x01)
 
     -- RST 10H (0xD7)
     resetVM()
@@ -1946,7 +1948,7 @@ test.unit "vm - RST" (function()
     assert(pc == 0x0011)
     assert(sp == 0xFFFC)
     assert(getMem(0xFFFD) == 0x00)
-    assert(getMem(0xFFFC) == 0x02)
+    assert(getMem(0xFFFC) == 0x01)
 
     -- RST 18H (0xDF)
     resetVM()
@@ -1955,7 +1957,7 @@ test.unit "vm - RST" (function()
     assert(pc == 0x0019)
     assert(sp == 0xFFFC)
     assert(getMem(0xFFFD) == 0x00)
-    assert(getMem(0xFFFC) == 0x02)
+    assert(getMem(0xFFFC) == 0x01)
 
     -- RST 20H (0xE7)
     resetVM()
@@ -1964,7 +1966,7 @@ test.unit "vm - RST" (function()
     assert(pc == 0x0021)
     assert(sp == 0xFFFC)
     assert(getMem(0xFFFD) == 0x00)
-    assert(getMem(0xFFFC) == 0x02)
+    assert(getMem(0xFFFC) == 0x01)
 
     -- RST 28H (0xEF)
     resetVM()
@@ -1973,7 +1975,7 @@ test.unit "vm - RST" (function()
     assert(pc == 0x0029)
     assert(sp == 0xFFFC)
     assert(getMem(0xFFFD) == 0x00)
-    assert(getMem(0xFFFC) == 0x02)
+    assert(getMem(0xFFFC) == 0x01)
 
     -- RST 30H (0xF7)
     resetVM()
@@ -1982,7 +1984,7 @@ test.unit "vm - RST" (function()
     assert(pc == 0x0031)
     assert(sp == 0xFFFC)
     assert(getMem(0xFFFD) == 0x00)
-    assert(getMem(0xFFFC) == 0x02)
+    assert(getMem(0xFFFC) == 0x01)
 
     -- RST 38H (0xFF)
     resetVM()
@@ -1991,7 +1993,7 @@ test.unit "vm - RST" (function()
     assert(pc == 0x0039)
     assert(sp == 0xFFFC)
     assert(getMem(0xFFFD) == 0x00)
-    assert(getMem(0xFFFC) == 0x02)
+    assert(getMem(0xFFFC) == 0x01)
 
     testLenBuffer = oldTestLenBuffer
 end)
@@ -2247,4 +2249,5 @@ test.unit "vm - SET" (function()
     test.assert_equal(getMem(0x0100), 0x40)
 end)
 
+resetVM()
 return vm

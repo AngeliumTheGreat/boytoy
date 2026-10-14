@@ -1,7 +1,7 @@
-local vm = require "vm"
+local vm = require "emulator.vm"
 -- function to get and set memory at the address
 local getMem = vm.getMem
-local setMem = vm.getMem
+local setMem = vm.setMem
 
 -- do a certain number of yields
 local function idle(n)
@@ -71,7 +71,7 @@ local function scanline(LY)
 			and LY + 16 >= y_pos
 			and LY + 16 < y_pos + sprite_height 
 		then
-			sprite_place = current_sprites_number * 4
+			local sprite_place = current_sprites_number * 4
 			sprite_buffer[sprite_place] = y_pos
 			sprite_buffer[sprite_place + 1] = x_pos
 			sprite_buffer[sprite_place + 2] = tile_number
@@ -85,15 +85,15 @@ local function scanline(LY)
 	-- Drawing (Mode 3)
 	setMem(0xFF41, bit.bor(getMem(0xFF41), 0x03)) -- set bits 1-2 of LCD status register to 11 (Drawing mode)
 
-	drawing_t_cycles = 0
+	local drawing_t_cycles = 0
 
-	bg_fifo = {}
-	sprite_fifo = {}
+	local bg_fifo = {}
+	local sprite_fifo = {}
 
-	x_position_counter = 0
+	local x_position_counter = 0
 
 	while x_position_counter < 160 do
-		-- drawing loop
+		-- implement drawing loop
 	end
 
 
