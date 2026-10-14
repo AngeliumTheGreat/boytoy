@@ -728,7 +728,7 @@ opcodes[0xD0 + 1] = function() if not getFlagC() then op_ret(); idle(4) else idl
 opcodes[0xC8 + 1] = function() if getFlagZ() then op_ret(); idle(4) else idle(1) end end
 opcodes[0xD8 + 1] = function() if getFlagC() then op_ret(); idle(4) else idle(1) end end
 
-function op_rst(n)
+local function op_rst(n)
     local lsb = bit.band(pc,0xFF)
     local msb = bit.rshift(pc-lsb,8)
     sp = bit.band(sp-1,0xFFFF); setMem(sp,msb)
@@ -747,7 +747,7 @@ opcodes[0xDF + 1] = function() op_rst(0x18+1) end
 opcodes[0xEF + 1] = function() op_rst(0x28+1) end
 opcodes[0xFF + 1] = function() op_rst(0x38+1) end
 
-function op_call(condition)
+local function op_call(condition)
     local nn_lsb = getOpcode()
     local nn_msb = getOpcode()
     local nn = 256 * nn_msb + nn_lsb
