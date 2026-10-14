@@ -51,7 +51,7 @@ local function scanline(LY)
 	setMem(0xFF41, bit.bor(bit.band(getMem(0xFF41), 0xFE), 0x02)) -- set bits 1-2 of LCD status register to 10 (OAM Scan mode)
 
 	local sprite_buffer = {}
-
+	local current_sprites_number = 0
 	local OAM_begin = 0xFE00  -- first byte of OAM memory
 	for i=1,40 do
 		-- get stuff from OAM
@@ -64,8 +64,6 @@ local function scanline(LY)
 		local LCDC = getMem(0xFF40) -- flags
 		local tall_sprites = getBit(LCDC, 2) -- flag that says if sprites should be tall
 		local sprite_height = tall_sprites and 16 or 8
-		local current_sprites_number = 0
-		-- ^ this resets every iteration. move somewhere else to fix
 		if current_sprites_number < 10
 			and x_pos > 0
 			and LY + 16 >= y_pos
@@ -92,8 +90,9 @@ local function scanline(LY)
 
 	local x_position_counter = 0
 
+	-- TODO: implement drawing loop
 	while x_position_counter < 160 do
-		-- implement drawing loop
+		break
 	end
 
 

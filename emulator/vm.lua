@@ -951,6 +951,7 @@ end
 -- return extra goodies
 
 vm.getMem = getMem
+vm.setMem = setMem
 
 test.unit "vm - registers" (function()
     resetVM()
