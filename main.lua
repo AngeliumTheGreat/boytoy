@@ -42,9 +42,22 @@ local buttons = {
 local input = { text = "", focused = false,
                 x = 220, y = 130, width = 200, height = 36 }
 
+local function romLoad(filename)
+    local file, err = io.open(filename, "rb")
+    if not file then return nil, err end
+    local data = file:read("*a")
+    file:close()
 
-local romData = nil
-local romPath = nil
+    if #data == 0 then return nil, "ROM is empty" end
+    if #data > 0x8000 then return nil, "ROM too large (needs bank switching)" end
+
+    vm.initVM()
+    for i = 1, #data do
+        vm.setMem(i - 1, data:byte(i))
+    end
+    print("file loaded successfully :3")
+    return #data
+end
 
 local function mouseOnButton(x,y,button)
     if x >= buttons[button].x

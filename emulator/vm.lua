@@ -40,6 +40,7 @@ local reg_L = 0
 
 -- interrupt master enable
 local IME = 0
+local IME_next = 0
 
 local function getRegA() return reg_A end
 local function getRegF() return reg_F end
@@ -97,13 +98,28 @@ local function setFlags(z, n, h, c)
     setRegF(f)
 end
 
--- reset
+-- reset, only use this for tests
 local function resetVM()
     for i=1,0x10000 do memory[i]=0 end
     reg_A=0; reg_F=0; reg_B=0; reg_C=0; reg_D=0; reg_E=0; reg_H=0; reg_L=0
     pc = 1
     sp = 0xFFFE
     IME = 0
+    halted = false; stopped = false; IME_next = 0    
+end
+
+-- correct initialization tho
+local function initVM()
+    for i=1,0x10000 do memory[i]=0 end
+    reg_A=0x01; reg_F=0xB0; reg_B=0x00; reg_C=0x13; 
+    reg_D=0x00; reg_E=0xD8; reg_H=0x01; reg_L=0x4D
+    pc = 0x101
+    sp = 0xFFFE
+    IME = 0
+    halted = false; stopped = false; IME_next = 0    
+    setMem(0xFF0F,0xE1); setMem(0xFF40,0x91); setMem(0xFF41,0x85)
+    setMem(0xFF47,0xFC); setMem(0xFF00,0xCF); setMem(0xFF48,0xFF)
+    setMem(0xFF49,0xFF)
 end
 
 local function getLowestSetBit(x)
@@ -1021,6 +1037,8 @@ end
 
 vm.getMem = getMem
 vm.setMem = setMem
+vm.memory = memory
+vm.initVM = initVM
 
 test.unit "vm - registers" (function()
     resetVM()
