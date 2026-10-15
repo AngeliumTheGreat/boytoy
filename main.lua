@@ -1,6 +1,6 @@
 local test = require "util.test"
 local utf8 = require "utf8"
-test.enable()
+-- test.enable()
 
 local _, conf = pcall(require, "conf")
 local keybindings = conf.keybindings
@@ -59,6 +59,14 @@ local function romLoad(filename)
     return #data
 end
 
+local statusMsg = ""
+local function tryLoad()
+    local name = input.text:match("^%s*(.-)%s*$"):gsub('^"(.*)"$', "%1")
+    local n, err = romLoad(name)
+    if n then statusMsg = ""; screen = "emulator"
+    else statusMsg = tostring(err) end
+end
+
 local function mouseOnButton(x,y,button)
     if x >= buttons[button].x
             and x <= buttons[button].x + buttons[button].width
@@ -78,7 +86,7 @@ function love.keypressed(key)
             local cut = utf8.offset(input.text, -1)
             if cut then input.text = input.text:sub(1, cut - 1) end
         elseif key == "return" then
-            -- Load rom here
+            tryLoad()
         end
         return  -- don't pass keys on to the emulator
     end
@@ -96,7 +104,7 @@ function love.mousepressed(x, y, button)
             and y >= input.y and y <= input.y + input.height
         -- Check if the Load ROM button was clicked
         if mouseOnButton(x,y,"Load") then
-            -- implement loading
+            tryLoad()
         end
 
         if mouseOnButton(x,y,"Settings") then
@@ -146,6 +154,8 @@ local function drawMenu()
             "center"
         )
     end
+
+    love.graphics.printf(statusMsg, 0, 400, 640, "center")
 end
 
 function love.load()
