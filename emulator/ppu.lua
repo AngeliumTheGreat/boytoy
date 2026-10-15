@@ -25,12 +25,37 @@ local function getBit(byte, n)
 	return (bit.band(byte, bit.lshift(1,n)))  ~= 0
 end
 
+-- fetcher-internal variable
+local x_position_fetcher
+local window_line_counter
+local window_fetching_mode
 -- background and window pixel Fetcher
 local function fetchBg()
-	-- fetch tile number
-	-- fetch tile data (low)
-	-- fetch tile data (high)
-	-- push to fifo
+	local LCDC = getMem(0xFF40) -- flags
+	if getBit(LCDC, 0) == 0 then -- bg/window disabled, everything rendered as white
+		bg_fifo = {}
+		for i = 1,8 do
+			bg_fifo[i].color = 0
+			bg_fifo[i].palette = 0
+		end
+	else
+		if window_fetching_mode then
+			local map_at_9C00 = getBit(LCDC, 6) == 1
+		else
+			local map_at_9C00 = getBit(LCDC, 4) == 1
+		end
+		-- fetch tile number
+		local tile_number_address
+		if map_at_9C00 then
+			tile_number_address = getMem(0x9C00)
+		else
+			tile_number_address = getMem(0x9800)
+		end
+		tile_number_address = tile_number_address + x_position_fetcher
+		-- fetch tile data (low)
+		-- fetch tile data (high)
+		-- push to fifo
+	end
 end
 
 -- sprite pixel Fetcher
@@ -53,6 +78,9 @@ local function scanline(LY)
 	local sprite_buffer = {}
 	local current_sprites_number = 0
 	local OAM_begin = 0xFE00  -- first byte of OAM memory
+	local LCDC = getMem(0xFF40) -- flags
+	local tall_sprites = getBit(LCDC, 2) == 1 -- flag that says if sprites should be tall, converted to boolean
+	local sprite_height = tall_sprites and 16 or 8
 	for i=1,40 do
 		-- get stuff from OAM
 		local OAM_offset = (i - 1) * 4 -- how much we need to shift to get i'th sprite
@@ -61,9 +89,6 @@ local function scanline(LY)
 		local tile_number = getMem(OAM_begin + OAM_offset + 2)
 		local sprite_flags = getMem(OAM_begin + OAM_offset + 3)
 		-- add to buffer if conditions apply
-		local LCDC = getMem(0xFF40) -- flags
-		local tall_sprites = getBit(LCDC, 2) -- flag that says if sprites should be tall
-		local sprite_height = tall_sprites and 16 or 8
 		if current_sprites_number < 10
 			and x_pos > 0
 			and LY + 16 >= y_pos
@@ -88,10 +113,14 @@ local function scanline(LY)
 	local bg_fifo = {}
 	local sprite_fifo = {}
 
-	local x_position_counter = 0
+	local x_position = 0
+	-- fetcher internal variables
+	x_position_fetcher = 0
+	window_line_counter = 0
+	window_fetching_mode = false
 
 	-- TODO: implement drawing loop
-	while x_position_counter < 160 do
+	while x_position < 160 do
 		break
 	end
 
