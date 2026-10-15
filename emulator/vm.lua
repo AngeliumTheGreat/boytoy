@@ -12,11 +12,7 @@ local memory = {}
 for i=1,0x10000 do memory[i]=0 end
 
 local function getMem(x) return memory[(x % 0x10000) + 1] end
-local function setMem(x,val) 
-    memory[(x % 0x10000) + 1] = val % 0x100 
-    if x == 0xFF02 and val == 0x81 then
-    io.write(string.char(getMem(0xFF01)))
-end
+local function setMem(x,val) memory[bit.band(x,0xFFFF) + 1] = bit.band(val,0xFF) end
 end
 local function getOpcode()
     local value = memory[pc]
