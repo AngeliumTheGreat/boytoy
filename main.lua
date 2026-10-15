@@ -1,4 +1,5 @@
 local test = require "util.test"
+local utf8 = require "utf8"
 test.enable()
 
 local _, conf = pcall(require, "conf")
@@ -58,17 +59,17 @@ function love.textinput(t)
     end
 end
 
-if screen == "menu" and input.focused then
-    if key == "backspace" then
-        local cut = utf8.offset(input.text, -1)
-        if cut then input.text = input.text:sub(1, cut - 1) end
-    elseif key == "return" then
-        -- Load rom here
-    end
-    return  -- don't pass keys on to the emulator
-end
-
 function love.keypressed(key)
+    if screen == "menu" and input.focused then
+        if key == "backspace" then
+            local cut = utf8.offset(input.text, -1)
+            if cut then input.text = input.text:sub(1, cut - 1) end
+        elseif key == "return" then
+            -- Load rom here
+        end
+        return  -- don't pass keys on to the emulator
+    end
+
     for keyboardKey, gameboyButton in pairs(keybindings) do
         if key == keyboardKey then
             -- IMPLEMENT: press da key in the emulator
