@@ -1,6 +1,6 @@
 local test = require "util.test"
 local utf8 = require "utf8"
--- test.enable()
+test.enable()
 
 local _, conf = pcall(require, "conf")
 local keybindings = conf.keybindings
@@ -12,7 +12,8 @@ local vm = require "emulator.vm"
 local screen = "menu"
 
 -- in hertz
-local CPU_FREQUENCY = 200
+local cpu_frequency = 4194304
+local max_dt = 1/20   -- stops a lag spike from snowballing
 
 local buttons = {
         Load = {
@@ -173,7 +174,8 @@ end
 local cycle_accumulator = 0
 local cycle = vm.cycle
 function love.update(dt)
-    cycle_accumulator = cycle_accumulator + CPU_FREQUENCY * dt
+    if screen ~= "emulator" then return end
+    cycle_accumulator = cycle_accumulator + cpu_frequency * math.min(dt, max_dt)
     while cycle_accumulator > 1 do
         cycle()
         cycle_accumulator = cycle_accumulator - 1
