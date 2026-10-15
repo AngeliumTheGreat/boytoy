@@ -38,6 +38,9 @@ local buttons = {
             height = 50
         },
     }
+local input = { text = "", focused = false,
+                x = 220, y = 130, width = 200, height = 36 }
+
 
 local romData = nil
 local romPath = nil
@@ -47,6 +50,22 @@ local function mouseOnButton(x,y,button)
             and x <= buttons[button].x + buttons[button].width
             and y >= buttons[button].y
             and y <= buttons[button].y + buttons[button].height then return true else return false end
+end
+
+function love.textinput(t)
+    if screen == "menu" and input.focused then
+        input.text = input.text .. t
+    end
+end
+
+if screen == "menu" and input.focused then
+    if key == "backspace" then
+        local cut = utf8.offset(input.text, -1)
+        if cut then input.text = input.text:sub(1, cut - 1) end
+    elseif key == "return" then
+        -- Load rom here
+    end
+    return  -- don't pass keys on to the emulator
 end
 
 function love.keypressed(key)
@@ -59,6 +78,8 @@ end
 
 function love.mousepressed(x, y, button)
     if button == 1 then
+        input.focused = x >= input.x and x <= input.x + input.width
+            and y >= input.y and y <= input.y + input.height
         -- Check if the Load ROM button was clicked
         if mouseOnButton(x,y,"Load") then
             -- implement loading
@@ -84,6 +105,15 @@ local function drawMenu()
         "center"
     )
 
+    love.graphics.rectangle("line", input.x, input.y, input.width, input.height)
+    love.graphics.printf(input.text, input.x + 6, input.y + 10,
+                     input.width - 12, "left")
+    if input.focused and math.floor(love.timer.getTime() * 2) % 2 == 0 then
+        local w = love.graphics.getFont():getWidth(input.text)
+        love.graphics.line(input.x + 6 + w, input.y + 6,
+                       input.x + 6 + w, input.y + input.height - 6)
+    end
+
     -- Buttons
     for _, button in pairs(buttons) do
         love.graphics.rectangle(
@@ -105,6 +135,7 @@ local function drawMenu()
 end
 
 function love.load()
+    love.keyboard.setKeyRepeat(true)
     love.window.setTitle("Game Boy Emulator")
     love.window.setMode(640, 480)
 end
