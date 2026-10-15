@@ -12,7 +12,17 @@ local memory = {}
 for i=1,0x10000 do memory[i]=0 end
 
 local function getMem(x) return memory[(x % 0x10000) + 1] end
-local function setMem(x,val) memory[bit.band(x,0xFFFF) + 1] = bit.band(val,0xFF) end
+local function setMem(x,val) 
+    local addr = bit.band(x,0xFFFF)
+    if addr<0x8000 then return end
+    if (addr>=0xEC00) and (addr<=0xDDFF) then
+        memory[addr + 1] = bit.band(val,0xFF)
+        memory[addr + 0x2000 + 1] = bit.band(val,0xFF)
+    end
+    if addr==0xFF44 then return end   
+
+    memory[addr + 1] = bit.band(val,0xFF) 
+end
 local function getOpcode()
     local value = memory[pc]
     pc = (pc % 0x10000) + 1
