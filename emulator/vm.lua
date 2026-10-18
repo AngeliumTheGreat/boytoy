@@ -12,21 +12,33 @@ local memory = {}
 for i=1,0x10000 do memory[i]=0 end
 
 local function getMem(x) return memory[(x % 0x10000) + 1] end
+
+local reg_handlers = {
+    [0xFF44] = function() end,
+}
+
 local function setMem(x,val) 
     local addr = bit.band(x,0xFFFF)
-    if addr<0x8000 then return end
-    if (addr>=0xC000) and (addr<=0xDDFF) then
+    if addr<0x8000 then
+        return
+    elseif (addr>=0xC000) and (addr<=0xDDFF) then
         memory[addr + 1] = bit.band(val,0xFF)
         memory[addr + 0x2000 + 1] = bit.band(val,0xFF)
+    else
+        local handler = reg_handlers[addr]
+        if handler then
+            handler(val)
+        else
+            memory[addr + 1] = bit.band(val,0xFF)
+        end
     end
-    if addr==0xFF44 then return end   
-
-    memory[addr + 1] = bit.band(val,0xFF) 
 end
+
 local function setMemDirect(x,val) 
     local addr = bit.band(x,0xFFFF)
     memory[addr + 1] = bit.band(val,0xFF)
 end
+
 local function getOpcode()
     local value = memory[pc]
     pc = (pc % 0x10000) + 1
@@ -1054,6 +1066,7 @@ vm.setMem = setMem
 vm.setMemDirect = setMemDirect
 vm.memory = memory
 vm.initVM = initVM
+vm.reg_handlers = reg_handlers
 
 test.unit "vm - registers" (function()
     resetVM()
