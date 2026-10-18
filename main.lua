@@ -6,6 +6,7 @@ local _, conf = pcall(require, "conf")
 local keybindings = conf.keybindings
 
 local love = require "love"
+local apu = require "emulator.apu"
 local vm = require "emulator.vm"
 
 -- current screen
@@ -174,12 +175,16 @@ function love.draw()
 end
 
 local cycle_accumulator = 0
-local cycle = vm.cycle
+local cpu_cycle = vm.cycle
+local apu_cycle = apu.cycle
+local apu_queue = apu.queue
 function love.update(dt)
     if screen ~= "emulator" then return end
     cycle_accumulator = cycle_accumulator + cpu_frequency * math.min(dt, max_dt)
     while cycle_accumulator > 1 do
-        cycle()
+        cpu_cycle()
+        apu_cycle()
         cycle_accumulator = cycle_accumulator - 1
     end
+    apu_queue() -- push any rendered audio to the source. this guarantees only one push per cycle
 end
