@@ -1727,10 +1727,10 @@ test.unit "vm - 8 bit DEC" (function()
     assert(getFlagZ())
     assert(not getFlagH())
     resetVM()
-    setMem(0x10,0xF0); setRegHL(0x10)
+    setMem(0xC010,0xF0); setRegHL(0xC010)
     -- DEC HL
     testRun {0x35}
-    assert(getMem(0x10) == 0xEF)
+    assert(getMem(0xC010) == 0xEF)
     assert(getFlagN())
     assert(not getFlagZ())
     assert(getFlagH())
@@ -2230,10 +2230,10 @@ test.unit "vm - SLA" (function()
     test.assert_equal(getRegD(), 0x00)
     test.assert_equal(getRegF(), 0x90)  -- zero flag + carry flag
     resetVM()
-    setMem(0x80, 0x44); setRegHL(0x80); setRegF(0xF0)
+    setMem(0xC080, 0x44); setRegHL(0xC080); setRegF(0xF0)
     -- SLA [HL]
     testRun { 0xCB, 0x26 }
-    test.assert_equal(getMem(0x80), 0x88)
+    test.assert_equal(getMem(0xC080), 0x88)
     test.assert_equal(getRegF(), 0x00)
     resetVM()
 end)
@@ -2249,10 +2249,10 @@ test.unit "vm - SRA" (function()
     test.assert_equal(getRegD(), 0x00)
     test.assert_equal(getRegF(), 0x90)
     resetVM()
-    setMem(0x100, 0x45); setRegHL(0x100); setRegF(0xE0)
+    setMem(0xC100, 0x45); setRegHL(0xC100); setRegF(0xE0)
     -- SRA [HL]
     testRun { 0xCB, 0x2E }
-    test.assert_equal(getMem(0x100), 0x22)
+    test.assert_equal(getMem(0xC100), 0x22)
     test.assert_equal(getRegF(), 0x10)
     resetVM()
 end)
@@ -2268,10 +2268,10 @@ test.unit "vm - SWAP" (function()
     test.assert_equal(getRegL(), 0x0F)
     test.assert_equal(getRegF(), 0x00)
     resetVM()
-    setMem(0x300, 0x12); setRegHL(0x300)
+    setMem(0xC300, 0x12); setRegHL(0xC300)
     -- SWAP [HL]
     testRun { 0xCB, 0x36 }
-    test.assert_equal(getMem(0x300), 0x21)
+    test.assert_equal(getMem(0xC300), 0x21)
     resetVM()
     setRegB(0x00)
     -- SWAP B
@@ -2292,10 +2292,10 @@ test.unit "vm - SRL" (function()
     test.assert_equal(getRegH(), 0x7F)
     test.assert_equal(getRegF(), 0x10)
     resetVM()
-    setMem(0x200, 0x01); setRegHL(0x200); setRegF(0x20)
+    setMem(0xC200, 0x01); setRegHL(0xC200); setRegF(0x20)
     -- SRL [HL]
     testRun { 0xCB, 0x3E }
-    test.assert_equal(getMem(0x200), 0x00)
+    test.assert_equal(getMem(0xC200), 0x00)
     test.assert_equal(getRegF(), 0x90)
     resetVM()
 end)
@@ -2328,10 +2328,10 @@ test.unit "vm - RES" (function()
     test.assert_equal(getRegH(), 0xA0)
     test.assert_equal(getRegF(), 0x80)
     resetVM()
-    setRegHL(0x0200); setMem(0x200, 0x18)
+    setRegHL(0xC200); setMem(0xC200, 0x18)
     -- RES 4 [HL]
     testRun { 0xCB, 0xA6 }
-    test.assert_equal(getMem(0x200), 0x08)
+    test.assert_equal(getMem(0xC200), 0x08)
     resetVM()
 end)
 
@@ -2346,10 +2346,10 @@ test.unit "vm - SET" (function()
     test.assert_equal(getRegC(), 0x14)
     test.assert_equal(getRegF(), 0x30)
     resetVM()
-    setRegHL(0x0100)
+    setRegHL(0xC100)
     -- SET 6 [HL]
     testRun { 0xCB, 0xF6 }
-    test.assert_equal(getMem(0x0100), 0x40)
+    test.assert_equal(getMem(0xC100), 0x40)
 end)
 
 resetVM()
