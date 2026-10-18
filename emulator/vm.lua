@@ -15,13 +15,17 @@ local function getMem(x) return memory[(x % 0x10000) + 1] end
 local function setMem(x,val) 
     local addr = bit.band(x,0xFFFF)
     if addr<0x8000 then return end
-    if (addr>=0xEC00) and (addr<=0xDDFF) then
+    if (addr>=0xC000) and (addr<=0xDDFF) then
         memory[addr + 1] = bit.band(val,0xFF)
         memory[addr + 0x2000 + 1] = bit.band(val,0xFF)
     end
     if addr==0xFF44 then return end   
 
     memory[addr + 1] = bit.band(val,0xFF) 
+end
+local function setMemDirect(x,val) 
+    local addr = bit.band(x,0xFFFF)
+    memory[addr + 1] = bit.band(val,0xFF)
 end
 local function getOpcode()
     local value = memory[pc]
@@ -1047,6 +1051,7 @@ end
 
 vm.getMem = getMem
 vm.setMem = setMem
+vm.setMemDirect = setMemDirect
 vm.memory = memory
 vm.initVM = initVM
 

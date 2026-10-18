@@ -49,12 +49,14 @@ local function romLoad(filename)
     local data = file:read("*a")
     file:close()
 
-    if #data == 0 then return nil, "ROM is empty" end
+    if not data or #data == 0 then
+        return nil, "ROM is empty or could not be read"
+    end
     if #data > 0x8000 then return nil, "ROM too large (needs bank switching)" end
 
     vm.initVM()
     for i = 1, #data do
-        vm.setMem(i - 1, data:byte(i))
+        vm.memory[i] = data:byte(i)
     end
     print("file loaded successfully :3")
     return #data
