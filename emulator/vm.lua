@@ -14,12 +14,13 @@ for i=1,0x10000 do memory[i]=0 end
 local function getMem(x) return memory[(x % 0x10000) + 1] end
 local function setMem(x,val) 
     local addr = bit.band(x,0xFFFF)
-    if addr<0x8000 then return end
     if (addr>=0xC000) and (addr<=0xDDFF) then
         memory[addr + 1] = bit.band(val,0xFF)
         memory[addr + 0x2000 + 1] = bit.band(val,0xFF)
     end
-    if addr==0xFF44 then return end   
+    if addr<0x8000 then return end
+    if addr==0xFF44 then return end
+    if addr == 0xFF46 then doOAMDMA(value) return end 
 
     memory[addr + 1] = bit.band(val,0xFF) 
 end
@@ -144,6 +145,18 @@ local function getLowestSetBit(x)
         pos = pos + 1
     end
     return pos
+end
+
+local function doOAMDMA(sourcePage)
+    local source = bit.lshift(sourcePage, 8)
+
+    for i = 0, 0x9F do
+        local srcAddr = source + i
+        local dstAddr = 0xFE00 + i
+
+        local value = readMem(srcAddr)
+        setMemDirect(dstAddr, value)
+    end
 end
 
 -------------------------------------
