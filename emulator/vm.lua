@@ -221,8 +221,7 @@ local function initVM()
 end
 
 local function getLowestSetBit(x)
-    if x == 0 then return 0 end
-    local pos = 1
+    local pos = 0
     while bit.band(x, 1) == 0 do
         x = bit.rshift(x, 1)
         pos = pos + 1
