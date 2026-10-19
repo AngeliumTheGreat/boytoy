@@ -2416,5 +2416,47 @@ test.unit "vm - SET" (function()
     test.assert_equal(getMem(0xC100), 0x40)
 end)
 
+test.unit "vm - serial" (function()
+    -- capture sent bytes instead of printing them
+    local original_hook = vm.onSerialByte
+    local sent = {}
+    vm.onSerialByte = function(byte) sent[#sent + 1] = byte end
+
+    -- internal clock transfer completes after exactly 4096 T-cycles
+    resetVM()
+    setMem(0xFF01, 0x42)
+    setMem(0xFF02, 0x81)
+    for i = 1, SERIAL_TRANSFER_CYCLES - 1 do serialTick() end
+    assert(getMem(0xFF02) == 0x81)                        -- still transferring
+    assert(bit.band(getMem(0xFF0F), 0x08) == 0)           -- no interrupt yet
+    assert(#sent == 0)
+    serialTick()
+    assert(getMem(0xFF02) == 0x01)                        -- enable bit cleared
+    assert(getMem(0xFF01) == 0xFF)                        -- nothing connected
+    assert(bit.band(getMem(0xFF0F), 0x08) == 0x08)        -- serial interrupt requested
+    assert(#sent == 1 and sent[1] == 0x42)
+
+    -- external clock never completes
+    resetVM()
+    sent = {}
+    setMem(0xFF01, 0x11)
+    setMem(0xFF02, 0x80)
+    for i = 1, SERIAL_TRANSFER_CYCLES * 2 do serialTick() end
+    assert(getMem(0xFF02) == 0x80)
+    assert(#sent == 0)
+
+    -- clearing the enable bit aborts a transfer
+    resetVM()
+    sent = {}
+    setMem(0xFF02, 0x81)
+    for i = 1, 100 do serialTick() end
+    setMem(0xFF02, 0x01)
+    for i = 1, SERIAL_TRANSFER_CYCLES do serialTick() end
+    assert(#sent == 0)
+
+    vm.onSerialByte = original_hook
+    resetVM()
+end)
+
 resetVM()
 return vm
