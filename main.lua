@@ -186,5 +186,5 @@ function love.update(dt)
         apu_cycle()
         cycle_accumulator = cycle_accumulator - 1
     end
-    apu_queue() -- push any rendered audio to the source. this guarantees only one push per cycle
+    -- apu_queue() -- push any rendered audio to the source. this guarantees only one push per cycle
 end

@@ -46,8 +46,32 @@ local function doOAMDMA(sourcePage)
     end
 end
 
+local div_counter = 0   -- internal 16-bit counter
+local TIMA_BIT = { [0] = 9, [1] = 3, [2] = 5, [3] = 7 }
+
+local function timerTick()
+    local old = div_counter
+    div_counter = bit.band(div_counter + 1, 0xFFFF)
+    memory[0xFF04 + 1] = bit.rshift(div_counter, 8)   -- DIV
+
+    local tac = memory[0xFF07 + 1]
+    if bit.band(tac, 0x04) == 0 then return end        -- timer disabled
+
+    local mask = bit.lshift(1, TIMA_BIT[bit.band(tac, 0x03)])
+    if bit.band(old, mask) ~= 0 and bit.band(div_counter, mask) == 0 then
+        local tima = memory[0xFF05 + 1] + 1
+        if tima > 0xFF then
+            memory[0xFF05 + 1] = memory[0xFF06 + 1]                       -- reload from TMA
+            memory[0xFF0F + 1] = bit.bor(memory[0xFF0F + 1], 0x04)        -- timer interrupt
+        else
+            memory[0xFF05 + 1] = tima
+        end
+    end
+end
+
 local reg_handlers = {
     [0xFF02] = onSerialControl,
+    [0xFF04] = function() div_counter = 0; memory[0xFF04 + 1] = 0 end,
     [0xFF44] = function() end,
     [0xFF46] = function(val) doOAMDMA(val) end
 }
@@ -177,6 +201,7 @@ local function resetVM()
     IME = 0
     halted = false; stopped = false; IME_next = 0  
     serial_counter = 0;  
+    div_counter = 0;
 end
 
 -- correct initialization tho
@@ -191,7 +216,8 @@ local function initVM()
     setMem(0xFF0F,0xE1); setMem(0xFF40,0x91); setMem(0xFF41,0x85)
     setMem(0xFF47,0xFC); setMem(0xFF00,0xCF); setMem(0xFF48,0xFF)
     setMem(0xFF49,0xFF)
-    serial_counter = 0
+    serial_counter = 0;
+    div_counter = 0;
 end
 
 local function getLowestSetBit(x)
@@ -258,6 +284,7 @@ end
 local cpu_step = coroutine.wrap(function() while true do _cycle() end end)
 local function cycle()
     serialTick()
+    timerTick()
     return cpu_step()
 end
 vm.cycle = cycle
