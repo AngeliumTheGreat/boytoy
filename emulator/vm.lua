@@ -11,6 +11,78 @@ local stopped = false
 local memory = {}
 for i=1,0x10000 do memory[i]=0 end
 
+local function getMem(x) return memory[(x % 0x10000) + 1] end
+
+local function setMemDirect(x,val) 
+    local addr = bit.band(x,0xFFFF)
+    memory[addr + 1] = bit.band(val,0xFF)
+end
+
+-- now we getting into some SERIAL stuff (funny pun i know)
+local SERIAL_TRANSFER_CYCLES = 4096
+local serial_counter = 0   -- T-cycles left, 0 = idle
+
+local function onSerialControl(val)
+    val = bit.band(val, 0xFF)
+    memory[0xFF02 + 1] = val
+    if bit.band(val, 0x81) == 0x81 then
+        serial_counter = SERIAL_TRANSFER_CYCLES   -- start
+    elseif bit.band(val, 0x80) == 0 then
+        serial_counter = 0                        -- enable bit cleared aborts
+    end
+end
+
+-- OAM DMA (object attribute memory direct memory access)
+-- fucking Objektattributspeicherdirektspeicherzugriff
+local function doOAMDMA(sourcePage)
+    local source = bit.lshift(sourcePage, 8)
+
+    for i = 0, 0x9F do
+        local srcAddr = source + i
+        local dstAddr = 0xFE00 + i
+
+        local value = getMem(srcAddr)
+        setMemDirect(dstAddr, value)
+    end
+end
+
+local reg_handlers = {
+    [0xFF02] = onSerialControl,
+    [0xFF44] = function() end,
+    [0xFF46] = function(val) doOAMDMA(val) end
+}
+
+local function setMem(x,val) 
+    local addr = bit.band(x,0xFFFF)
+
+    if addr<0x8000 then
+        return
+    elseif (addr>=0xC000) and (addr<=0xDDFF) then
+        memory[addr + 1] = bit.band(val,0xFF)
+        memory[addr + 0x2000 + 1] = bit.band(val,0xFF)
+    else
+        local handler = reg_handlers[addr]
+        if handler then
+            handler(val)
+        else
+            memory[addr + 1] = bit.band(val,0xFF)
+        end
+    end
+end
+
+-- serial tick is here because im stupid
+local function serialTick()
+    if serial_counter == 0 then return end
+    serial_counter = serial_counter - 1
+    if serial_counter == 0 then
+        local sent = memory[0xFF01 + 1]
+        vm.onSerialByte(sent)                        -- output hook
+        memory[0xFF01 + 1] = 0xFF                    -- received byte
+        memory[0xFF02 + 1] = bit.band(memory[0xFF02 + 1], 0x7F)
+        memory[0xFF0F + 1] = bit.bor(memory[0xFF0F + 1], 0x08)
+    end
+end
+
 local function getOpcode()
     local value = memory[pc]
     pc = (pc % 0x10000) + 1
@@ -130,78 +202,6 @@ local function getLowestSetBit(x)
         pos = pos + 1
     end
     return pos
-end
-
--- now we getting into some SERIAL stuff (funny pun i know)
-local SERIAL_TRANSFER_CYCLES = 4096
-local serial_counter = 0   -- T-cycles left, 0 = idle
-
-local function onSerialControl(val)
-    val = bit.band(val, 0xFF)
-    memory[0xFF02 + 1] = val
-    if bit.band(val, 0x81) == 0x81 then
-        serial_counter = SERIAL_TRANSFER_CYCLES   -- start
-    elseif bit.band(val, 0x80) == 0 then
-        serial_counter = 0                        -- enable bit cleared aborts
-    end
-end
-
-local function serialTick()
-    if serial_counter == 0 then return end
-    serial_counter = serial_counter - 1
-    if serial_counter == 0 then
-        local sent = memory[0xFF01 + 1]
-        vm.onSerialByte(sent)                        -- output hook
-        memory[0xFF01 + 1] = 0xFF                    -- received byte
-        memory[0xFF02 + 1] = bit.band(memory[0xFF02 + 1], 0x7F)
-        memory[0xFF0F + 1] = bit.bor(memory[0xFF0F + 1], 0x08)
-    end
-end
-
--- OAM DMA (object attribute memory direct memory access)
--- fucking Objektattributspeicherdirektspeicherzugriff
-local function doOAMDMA(sourcePage)
-    local source = bit.lshift(sourcePage, 8)
-
-    for i = 0, 0x9F do
-        local srcAddr = source + i
-        local dstAddr = 0xFE00 + i
-
-        local value = getMem(srcAddr)
-        setMemDirect(dstAddr, value)
-    end
-end
-
--- the memory manipulation stuff is here now
-local function getMem(x) return memory[(x % 0x10000) + 1] end
-
-local function setMemDirect(x,val) 
-    local addr = bit.band(x,0xFFFF)
-    memory[addr + 1] = bit.band(val,0xFF)
-end
-
-local reg_handlers = {
-    [0xFF02] = onSerialControl,
-    [0xFF44] = function() end,
-    [0xFF46] = function(val) doOAMDMA(val) end
-}
-
-local function setMem(x,val) 
-    local addr = bit.band(x,0xFFFF)
-
-    if addr<0x8000 then
-        return
-    elseif (addr>=0xC000) and (addr<=0xDDFF) then
-        memory[addr + 1] = bit.band(val,0xFF)
-        memory[addr + 0x2000 + 1] = bit.band(val,0xFF)
-    else
-        local handler = reg_handlers[addr]
-        if handler then
-            handler(val)
-        else
-            memory[addr + 1] = bit.band(val,0xFF)
-        end
-    end
 end
 
 -------------------------------------
