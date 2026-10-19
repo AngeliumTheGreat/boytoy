@@ -13,6 +13,18 @@ for i=1,0x10000 do memory[i]=0 end
 
 local function getMem(x) return memory[(x % 0x10000) + 1] end
 
+local function doOAMDMA(sourcePage)
+    local source = bit.lshift(sourcePage, 8)
+
+    for i = 0, 0x9F do
+        local srcAddr = source + i
+        local dstAddr = 0xFE00 + i
+
+        local value = readMem(srcAddr)
+        setMemDirect(dstAddr, value)
+    end
+end
+
 local reg_handlers = {
     [0xFF44] = function() end,
     [0xFF46] = function(val) doOAMDMA(val) end
@@ -160,15 +172,28 @@ local function getLowestSetBit(x)
     return pos
 end
 
-local function doOAMDMA(sourcePage)
-    local source = bit.lshift(sourcePage, 8)
+local SERIAL_TRANSFER_CYCLES = 4096
+local serial_counter = 0   -- T-cycles left, 0 = idle
 
-    for i = 0, 0x9F do
-        local srcAddr = source + i
-        local dstAddr = 0xFE00 + i
+local function onSerialControl(val)
+    val = bit.band(val, 0xFF)
+    memory[0xFF02 + 1] = val
+    if bit.band(val, 0x81) == 0x81 then
+        serial_counter = SERIAL_TRANSFER_CYCLES   -- start
+    elseif bit.band(val, 0x80) == 0 then
+        serial_counter = 0                        -- enable bit cleared aborts
+    end
+end
 
-        local value = readMem(srcAddr)
-        setMemDirect(dstAddr, value)
+local function serialTick()
+    if serial_counter == 0 then return end
+    serial_counter = serial_counter - 1
+    if serial_counter == 0 then
+        local sent = memory[0xFF01 + 1]
+        vm.onSerialByte(sent)                        -- output hook
+        memory[0xFF01 + 1] = 0xFF                    -- received byte
+        memory[0xFF02 + 1] = bit.band(memory[0xFF02 + 1], 0x7F)
+        memory[0xFF0F + 1] = bit.bor(memory[0xFF0F + 1], 0x08)
     end
 end
 
@@ -223,8 +248,13 @@ local function _cycle()
 end
 -- IMPORTANT: remember to actually also IMPLEMENT the fucking interrupt handlers
 
-local cycle = coroutine.wrap(function() while true do _cycle() end end)
+local cpu_step = coroutine.wrap(function() while true do _cycle() end end)
+local function cycle()
+    serialTick()
+    return cpu_step()
+end
 vm.cycle = cycle
+vm.onSerialByte = function(byte) io.write(string.char(byte)); io.flush() end
 
 -- how long does testRun run past the end of program length
 local testLenBuffer = 10
