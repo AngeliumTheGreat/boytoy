@@ -107,9 +107,15 @@ local function serialTick()
     end
 end
 
+local halt_bug = false
+
 local function getOpcode()
     local value = memory[pc]
-    pc = (pc % 0x10000) + 1
+    if halt_bug then
+        halt_bug = false          -- bro just fails to increment pc (insert laughing emoji)
+    else
+        pc = bit.band(pc,0xFFFF) + 1
+    end
     return value
 end
 
@@ -159,10 +165,10 @@ local function setRegE(x) reg_E=x end
 local function setRegH(x) reg_H=x end
 local function setRegL(x) reg_L=x end
 
-local function setRegAF(x) x=x; reg_A=math.floor(x/256); reg_F = bit.band(x % 256, 0xF0) end
-local function setRegBC(x) x=x; reg_B=math.floor(x/256); reg_C=x%256 end
-local function setRegDE(x) x=x; reg_D=math.floor(x/256); reg_E=x%256 end
-local function setRegHL(x) x=x; reg_H=math.floor(x/256); reg_L=x%256 end
+local function setRegAF(x) x=x; reg_A=math.floor(x/256); reg_F=bit.band(x, 0xF0) end
+local function setRegBC(x) x=x; reg_B=math.floor(x/256); reg_C=bit.band(x,0xFF) end
+local function setRegDE(x) x=x; reg_D=math.floor(x/256); reg_E=bit.band(x,0xFF) end
+local function setRegHL(x) x=x; reg_H=math.floor(x/256); reg_L=bit.band(x,0xFF) end
 
 local function getIndRegHL() idle(1); return getMem(getRegHL()) end
 local function setIndRegHL(x) idle(1); setMem(getRegHL(), x) end
@@ -199,7 +205,7 @@ local function resetVM()
     pc = 1
     sp = 0xFFFE
     IME = 0
-    halted = false; stopped = false; IME_next = 0  
+    halted = false; stopped = false; IME_next = 0; halt_bug = false
     serial_counter = 0;  
     div_counter = 0;
 end
@@ -212,7 +218,7 @@ local function initVM()
     pc = 0x101
     sp = 0xFFFE
     IME = 0
-    halted = false; stopped = false; IME_next = 0    
+    halted = false; stopped = false; IME_next = 0; halt_bug = false    
     setMem(0xFF0F,0xE1); setMem(0xFF40,0x91); setMem(0xFF41,0x85)
     setMem(0xFF47,0xFC); setMem(0xFF00,0xCF); setMem(0xFF48,0xFF)
     setMem(0xFF49,0xFF)
@@ -399,7 +405,14 @@ opcodes[0xFB+1] = function() IME_next = 2 end
 
 -- HALT, halt, 0x76
 
-opcodes[0x76+1] = function() halted = true end
+opcodes[0x76+1] = function()
+    local pending = bit.band(getMem(0xFFFF), getMem(0xFF0F), 0x1F) ~= 0
+    if IME == 0 and pending then
+        halt_bug = true           -- bro doesn't halt; next byte gets read twice
+    else
+        halted = true
+    end
+end
 
 -- STOP, 0x10
 
@@ -530,7 +543,7 @@ end
 local function op_cp(value)
     local a = getRegA()
     local result = a - value
-    setFlags(result % 0x100 == 0, true, bit.band(a, 0x0F) < bit.band(value, 0x0F), a<value)
+    setFlags(bit.band(result,0xFF) == 0, true, bit.band(a, 0x0F) < bit.band(value, 0x0F), a<value)
 end
 
 -- CP r/[HL], 0xB8 - 0xBF
@@ -2481,6 +2494,20 @@ test.unit "vm - serial" (function()
     assert(#sent == 0)
 
     vm.onSerialByte = original_hook
+    resetVM()
+end)
+
+test.unit "vm - HALT bug" (function()
+    -- no bug: IME off, nothing pending, so HALT just halts
+    resetVM()
+    -- (halting is covered by the interrupt tests)
+
+    -- bug: IME off, interrupt pending, so INC B runs twice
+    resetVM()
+    setMem(0xFFFF, 0x04); setMem(0xFF0F, 0x04)
+    -- HALT, INC B, NOP
+    testRun { 0x76, 0x04, 0x00 }
+    assert(getRegB() == 2)
     resetVM()
 end)
 
