@@ -1,7 +1,17 @@
 local vm = require "emulator.vm"
+
 -- function to get and set memory at the address
 local getMem = vm.getMem
-local setMem = vm.setMem
+local setMem = vm.setMemDirect
+
+-- global variables
+-- fetcher-internal variable
+local x_position_fetcher
+local window_line_counter
+local window_fetching_mode
+-- queue for holding stuff to be rendered
+local bg_fifo = {}
+local sprite_fifo = {}
 
 -- do a certain number of yields
 local function idle(n)
@@ -20,40 +30,68 @@ local function timeInstruction(instruction)
 	return i
 end
 
--- get a bit of a byte
-local function getBit(byte, n)
+-- get a bit of a byte in boolean form
+local function getBitBool(byte, n)
 	return (bit.band(byte, bit.lshift(1,n)))  ~= 0
 end
 
--- fetcher-internal variable
-local x_position_fetcher
-local window_line_counter
-local window_fetching_mode
 -- background and window pixel Fetcher
 local function fetchBg()
+
 	local LCDC = getMem(0xFF40) -- flags
-	if getBit(LCDC, 0) == 0 then -- bg/window disabled, everything rendered as white
+
+	if getBitBool(LCDC, 0) then -- bg/window disabled, everything rendered as white
+
 		bg_fifo = {}
-		for i = 1,8 do
+		for i = 1,16 do
 			bg_fifo[i].color = 0
 			bg_fifo[i].palette = 0
 		end
+
 	else
-		if window_fetching_mode then
-			local map_at_9C00 = getBit(LCDC, 6) == 1
-		else
-			local map_at_9C00 = getBit(LCDC, 4) == 1
-		end
+
+		local LY = getMem(0xFF44)
+		local SCX = getMem(0xFF43)
+		local SCY = getMem(0xFF42)
+
 		-- fetch tile number
+		local map_at_9C00_not_9800
+		local scx_div_by_8
+		local tn_x_offset
+		local tn_y_offset
+		local td_offset
+
+		if window_fetching_mode then
+			map_at_9C00_not_9800 = getBitBool(LCDC, 6)
+			scx_div_by_8 = 0
+			tn_y_offset = 32 * bit.rshift(window_line_counter, 3) -- 32 * (WINDOW_LINE_COUNTER / 8)
+			td_offset = 2 * bit.band(window_line_counter, 0x7) -- 2 * (WINDOW_LINE_COUNTER mod 8)
+		else -- background fetching mode
+			map_at_9C00_not_9800 = getBitBool(LCDC, 4)
+			scx_div_by_8 = bit.rshift(SCX, 3) -- SCX / 8
+			tn_y_offset = 32 * bit.rshift(bit.band((LY + SCY),0xFF), 3) -- 32 * (((LY + SCY) & 0xFF) / 8)
+			td_offset = 2 * bit.band((LY + SCY), 0x7) -- 2 * ((LY + SCY) mod 8)
+		end
+
+		tn_x_offset = bin.band((x_position_fetcher + scx_div_by_8), 0x1F) -- add and wrap around scx
+		local tn_offset = bit.band((tn_x_offset + tn_y_offset), 0x3ff)
 		local tile_number_address
-		if map_at_9C00 then
+
+		if map_at_9C00_not_9800 then
 			tile_number_address = getMem(0x9C00)
 		else
 			tile_number_address = getMem(0x9800)
 		end
-		tile_number_address = tile_number_address + x_position_fetcher
-		-- fetch tile data (low)
-		-- fetch tile data (high)
+		tile_number_address = tile_number_address + tn_offset
+
+		local tile_number = getMem(tile_number_address)
+
+		-- fetch tile data
+		local tile_data_low
+		local tile_data_high
+		local method_8000_not_8800 = getBitBool(LCDC, 4)
+		-- low
+		-- high
 		-- push to fifo
 	end
 end
@@ -67,7 +105,7 @@ local function fetchSprite()
 end
 
 -- doing one line of 160 pixels
-local function scanline(LY)
+local function scanline()
 
 	-- run every 456 T-cycles
 	
@@ -78,8 +116,9 @@ local function scanline(LY)
 	local sprite_buffer = {}
 	local current_sprites_number = 0
 	local OAM_begin = 0xFE00  -- first byte of OAM memory
+	local LY = getMem(0xFF44)
 	local LCDC = getMem(0xFF40) -- flags
-	local tall_sprites = getBit(LCDC, 2) == 1 -- flag that says if sprites should be tall, converted to boolean
+	local tall_sprites = getBitBool(LCDC, 2) == 1 -- flag that says if sprites should be tall, converted to boolean
 	local sprite_height = tall_sprites and 16 or 8
 	for i=1,40 do
 		-- get stuff from OAM
@@ -110,11 +149,11 @@ local function scanline(LY)
 
 	local drawing_t_cycles = 0
 
-	local bg_fifo = {}
-	local sprite_fifo = {}
+	bg_fifo = {}
+	sprite_fifo = {}
 
 	local x_position = 0
-	-- fetcher internal variables
+	-- reset fetcher internal variables
 	x_position_fetcher = 0
 	window_line_counter = 0
 	window_fetching_mode = false
