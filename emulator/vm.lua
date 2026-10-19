@@ -103,7 +103,8 @@ local function resetVM()
     pc = 1
     sp = 0xFFFE
     IME = 0
-    halted = false; stopped = false; IME_next = 0    
+    halted = false; stopped = false; IME_next = 0  
+    serial_counter = 0;  
 end
 
 -- correct initialization tho
@@ -118,6 +119,7 @@ local function initVM()
     setMem(0xFF0F,0xE1); setMem(0xFF40,0x91); setMem(0xFF41,0x85)
     setMem(0xFF47,0xFC); setMem(0xFF00,0xCF); setMem(0xFF48,0xFF)
     setMem(0xFF49,0xFF)
+    serial_counter = 0
 end
 
 local function getLowestSetBit(x)
@@ -155,8 +157,6 @@ local function serialTick()
         memory[0xFF0F + 1] = bit.bor(memory[0xFF0F + 1], 0x08)
     end
 end
-
-local function resetSerial() serial_counter = 0 end
 
 -- OAM DMA (object attribute memory direct memory access)
 -- fucking Objektattributspeicherdirektspeicherzugriff
