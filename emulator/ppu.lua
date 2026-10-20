@@ -11,9 +11,6 @@ local window_line_counter
 local window_fetching_mode
 -- queue for holding stuff to be rendered
 local bg_fifo = {}
-for i=1,16 do
-	bg_fifo[i] = {}
-end
 
 local sprite_fifo = {}
 
@@ -44,9 +41,12 @@ local function fetchBg()
 
 	local LCDC = getMem(0xFF40) -- flags
 
-	if getBitBool(LCDC, 1	) then -- bg/window disabled, everything rendered as white
+	if not getBitBool(LCDC, 0) then -- bg/window disabled, everything rendered as white
 
 		bg_fifo = {}
+		for i=1,16 do
+			bg_fifo[i] = {}
+		end
 		for i = 1,16 do
 			bg_fifo[i].color = 0
 			bg_fifo[i].palette = 0
@@ -77,14 +77,14 @@ local function fetchBg()
 			td_offset = 2 * bit.band((LY + SCY), 0x7) -- 2 * ((LY + SCY) mod 8)
 		end
 
-		tn_x_offset = bi.band((x_position_fetcher + scx_div_by_8), 0x1F) -- add and wrap around scx
+		tn_x_offset = bit.band((x_position_fetcher + scx_div_by_8), 0x1F) -- add and wrap around scx
 		local tn_offset = bit.band((tn_x_offset + tn_y_offset), 0x3ff)
 		local tile_number_address
 
 		if map_at_9C00_not_9800 then
-			tile_number_address = getMem(0x9C00)
+			tile_number_address = 0x9C00 + tn_offset
 		else
-			tile_number_address = getMem(0x9800)
+			tile_number_address = 0x9800 + tn_offset
 		end
 		tile_number_address = tile_number_address + tn_offset
 

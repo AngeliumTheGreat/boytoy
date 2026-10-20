@@ -438,7 +438,7 @@ opcodes[0xFA+1] = function()
 
 -- DI, disable interrupts, 0xF3
 
-opcodes[0xF3+1] = function() IME = 0 end
+opcodes[0xF3+1] = function() IME = 0; IME_next = 0 end
 
 -- EI, enable interrupts, 0xFB
 
