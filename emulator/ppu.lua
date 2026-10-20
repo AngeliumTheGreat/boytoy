@@ -1,4 +1,6 @@
 local vm = require "emulator.vm"
+local ppu = require "emulator.ppu"
+local apu = require "emulator.apu"
 
 -- function to get and set memory at the address
 local getMem = vm.getMem
@@ -86,7 +88,6 @@ local function fetchBg()
 		else
 			tile_number_address = 0x9800 + tn_offset
 		end
-		tile_number_address = tile_number_address + tn_offset
 
 		local tile_number = getMem(tile_number_address)
 
