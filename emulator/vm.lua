@@ -69,7 +69,46 @@ local function timerTick()
     end
 end
 
+local joy_dpad = 0       -- bit set = held. bit0 right, bit1 left, bit2 up, bit3 down
+local joy_action = 0     -- bit set = held. bit0 A, bit1 B, bit2 select, bit3 start
+local joy_select = 0x30  -- bits 4-5 as last written by the game
+
+local JOY_DPAD = { right = 0x01, left = 0x02, up = 0x04, down = 0x08 }
+local JOY_ACTION = { a = 0x01, b = 0x02, select = 0x04, start = 0x08 }
+
+-- compute register from button state and select bits
+-- also raises joypad interrupt on a falling edge of any of the 4 lines
+local function joypadRefresh()
+    local pressed = 0
+    if bit.band(joy_select, 0x10) == 0 then pressed = bit.bor(pressed, joy_dpad) end
+    if bit.band(joy_select, 0x20) == 0 then pressed = bit.bor(pressed, joy_action) end
+
+    local nibble = bit.band(bit.bnot(pressed), 0x0F)
+    local old = bit.band(memory[0xFF00 + 1], 0x0F)
+    memory[0xFF00 + 1] = bit.bor(0xC0, joy_select, nibble)
+
+    -- joypad interrupt request
+    if bit.band(old, bit.bnot(nibble), 0x0F) ~= 0 then   -- a line went 1 -> 0
+        memory[0xFF0F + 1] = bit.bor(memory[0xFF0F + 1], 0x10)  
+        stopped = false                                          
+    end
+end
+
+-- called by frontend. name is "up", "down", "left", "right", "a", "b", "select", "start"
+function vm.setButton(name, pressed)
+    local mask = JOY_DPAD[name]
+    if mask then
+        joy_dpad = pressed and bit.bor(joy_dpad, mask) or bit.band(joy_dpad, bit.bnot(mask))
+    else
+        mask = JOY_ACTION[name]
+        if not mask then return end
+        joy_action = pressed and bit.bor(joy_action, mask) or bit.band(joy_action, bit.bnot(mask))
+    end
+    joypadRefresh()
+end
+
 local reg_handlers = {
+    [0xFF00] = function(val) joy_select = bit.band(val, 0x30); joypadRefresh() end,
     [0xFF02] = onSerialControl,
     [0xFF04] = function() div_counter = 0; memory[0xFF04 + 1] = 0 end,
     [0xFF44] = function() end,
@@ -208,6 +247,7 @@ local function resetVM()
     halted = false; stopped = false; IME_next = 0; halt_bug = false
     serial_counter = 0;  
     div_counter = 0;
+    joy_dpad = 0; joy_action = 0; joy_select = 0x30
 end
 
 -- correct initialization tho
@@ -224,6 +264,7 @@ local function initVM()
     setMem(0xFF49,0xFF)
     serial_counter = 0;
     div_counter = 0;
+    joy_dpad = 0; joy_action = 0; joy_select = 0x30
 end
 
 local function getLowestSetBit(x)
@@ -2508,6 +2549,28 @@ test.unit "vm - HALT bug" (function()
     -- HALT, INC B, NOP
     testRun { 0x76, 0x04, 0x00 }
     assert(getRegB() == 2)
+    resetVM()
+end)
+
+test.unit "vm - joypad" (function()
+    resetVM()
+    setMem(0xFF00, 0x20)                                   -- select directions
+    vm.setButton("down", true)
+    assert(bit.band(getMem(0xFF00), 0x0F) == 0x07)         -- down is bit 3, reads 0
+    assert(bit.band(getMem(0xFF0F), 0x10) == 0x10)         -- press requested the interrupt
+
+    setMem(0xFF0F, 0)
+    vm.setButton("down", false)
+    assert(bit.band(getMem(0xFF00), 0x0F) == 0x0F)
+    assert(bit.band(getMem(0xFF0F), 0x10) == 0)            -- release doesn't interrupt
+
+    vm.setButton("a", true)                                -- action group not selected
+    assert(bit.band(getMem(0xFF00), 0x0F) == 0x0F)
+    assert(bit.band(getMem(0xFF0F), 0x10) == 0)            -- so no interrupt
+
+    setMem(0xFF00, 0x10)                                   -- now select actions
+    assert(bit.band(getMem(0xFF00), 0x0F) == 0x0E)         -- A reads 0
+    vm.setButton("a", false)
     resetVM()
 end)
 
