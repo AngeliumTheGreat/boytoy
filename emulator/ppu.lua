@@ -32,7 +32,7 @@ end
 
 -- get a bit of a byte in boolean form
 local function getBitBool(byte, n)
-	return (bit.band(byte, bit.lshift(1,n)))  ~= 0
+	return bit.band(byte, bit.lshift(1,n))  ~= 0
 end
 
 -- background and window pixel Fetcher
@@ -64,12 +64,12 @@ local function fetchBg()
 		if window_fetching_mode then
 			map_at_9C00_not_9800 = getBitBool(LCDC, 6)
 			scx_div_by_8 = 0
-			tn_y_offset = 32 * bit.rshift(window_line_counter, 3) -- 32 * (WINDOW_LINE_COUNTER / 8)
+			tn_y_offset = 4 * window_line_counter -- 32 * (WINDOW_LINE_COUNTER / 8)
 			td_offset = 2 * bit.band(window_line_counter, 0x7) -- 2 * (WINDOW_LINE_COUNTER mod 8)
 		else -- background fetching mode
 			map_at_9C00_not_9800 = getBitBool(LCDC, 4)
 			scx_div_by_8 = bit.rshift(SCX, 3) -- SCX / 8
-			tn_y_offset = 32 * bit.rshift(bit.band((LY + SCY),0xFF), 3) -- 32 * (((LY + SCY) & 0xFF) / 8)
+			tn_y_offset = 4 * bit.band((LY + SCY), 0xFF) -- 32 * (((LY + SCY) & 0xFF) / 8)
 			td_offset = 2 * bit.band((LY + SCY), 0x7) -- 2 * ((LY + SCY) mod 8)
 		end
 
@@ -118,7 +118,7 @@ local function scanline()
 	local OAM_begin = 0xFE00  -- first byte of OAM memory
 	local LY = getMem(0xFF44)
 	local LCDC = getMem(0xFF40) -- flags
-	local tall_sprites = getBitBool(LCDC, 2) == 1 -- flag that says if sprites should be tall, converted to boolean
+	local tall_sprites = getBitBool(LCDC, 2) -- flag that says if sprites should be tall, converted to boolean
 	local sprite_height = tall_sprites and 16 or 8
 	for i=1,40 do
 		-- get stuff from OAM
@@ -162,7 +162,6 @@ local function scanline()
 	while x_position < 160 do
 		break
 	end
-
 
 	-- H-Blank (Mode 0)
 	setMem(0xFF41, bit.band(getMem(0xFF41), 0xFC)) -- set bits 1-2 of LCD status register to 00 (H-Blank mode)
