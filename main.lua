@@ -84,7 +84,7 @@ function love.textinput(t)
     end
 end
 
-function love.keypressed(key)
+function love.keypressed(key, scancode, isrepeat)
     if screen == "menu" and input.focused then
         if key == "backspace" then
             local cut = utf8.offset(input.text, -1)
@@ -95,11 +95,14 @@ function love.keypressed(key)
         return  -- don't pass keys on to the emulator
     end
 
-    for keyboardKey, gameboyButton in pairs(keybindings) do
-        if key == keyboardKey then
-            -- IMPLEMENT: press da key in the emulator
-        end
-    end
+    if isrepeat then return end          -- held keys must not retrigger
+    local button = keybindings[key]
+    if button then vm.setButton(button, true) end
+end
+
+function love.keyreleased(key)
+    local button = keybindings[key]
+    if button then vm.setButton(button, false) end
 end
 
 function love.mousepressed(x, y, button)
