@@ -11,6 +11,10 @@ local window_line_counter
 local window_fetching_mode
 -- queue for holding stuff to be rendered
 local bg_fifo = {}
+for i=1,16 do
+	bg_fifo[i] = {}
+end
+
 local sprite_fifo = {}
 
 -- do a certain number of yields
@@ -40,7 +44,7 @@ local function fetchBg()
 
 	local LCDC = getMem(0xFF40) -- flags
 
-	if getBitBool(LCDC, 0) then -- bg/window disabled, everything rendered as white
+	if getBitBool(LCDC, 1	) then -- bg/window disabled, everything rendered as white
 
 		bg_fifo = {}
 		for i = 1,16 do
@@ -64,16 +68,16 @@ local function fetchBg()
 		if window_fetching_mode then
 			map_at_9C00_not_9800 = getBitBool(LCDC, 6)
 			scx_div_by_8 = 0
-			tn_y_offset = 4 * window_line_counter -- 32 * (WINDOW_LINE_COUNTER / 8)
+			tn_y_offset = 32 * bit.rshift(window_line_counter, 3) -- 32 * (WINDOW_LINE_COUNTER / 8)
 			td_offset = 2 * bit.band(window_line_counter, 0x7) -- 2 * (WINDOW_LINE_COUNTER mod 8)
 		else -- background fetching mode
-			map_at_9C00_not_9800 = getBitBool(LCDC, 4)
+			map_at_9C00_not_9800 = getBitBool(LCDC, 3)
 			scx_div_by_8 = bit.rshift(SCX, 3) -- SCX / 8
-			tn_y_offset = 4 * bit.band((LY + SCY), 0xFF) -- 32 * (((LY + SCY) & 0xFF) / 8)
+			tn_y_offset = 32 * bit.rshift(bit.band((LY + SCY), 0xFF), 3) -- 32 * (((LY + SCY) & 0xFF) / 8)
 			td_offset = 2 * bit.band((LY + SCY), 0x7) -- 2 * ((LY + SCY) mod 8)
 		end
 
-		tn_x_offset = bin.band((x_position_fetcher + scx_div_by_8), 0x1F) -- add and wrap around scx
+		tn_x_offset = bi.band((x_position_fetcher + scx_div_by_8), 0x1F) -- add and wrap around scx
 		local tn_offset = bit.band((tn_x_offset + tn_y_offset), 0x3ff)
 		local tile_number_address
 

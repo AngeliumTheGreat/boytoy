@@ -245,9 +245,9 @@ local function resetVM()
     sp = 0xFFFE
     IME = 0
     halted = false; stopped = false; IME_next = 0; halt_bug = false
+    joy_dpad = 0; joy_action = 0; joy_select = 0x30
     serial_counter = 0;  
     div_counter = 0;
-    joy_dpad = 0; joy_action = 0; joy_select = 0x30
 end
 
 -- correct initialization tho
@@ -259,12 +259,12 @@ local function initVM()
     sp = 0xFFFE
     IME = 0
     halted = false; stopped = false; IME_next = 0; halt_bug = false    
+    joy_dpad = 0; joy_action = 0; joy_select = 0x30
     setMem(0xFF0F,0xE1); setMem(0xFF40,0x91); setMem(0xFF41,0x85)
     setMem(0xFF47,0xFC); setMem(0xFF00,0xCF); setMem(0xFF48,0xFF)
     setMem(0xFF49,0xFF)
     serial_counter = 0;
     div_counter = 0;
-    joy_dpad = 0; joy_action = 0; joy_select = 0x30
 end
 
 local function getLowestSetBit(x)
