@@ -11,7 +11,11 @@ local stopped = false
 local memory = {}
 for i=1,0x10000 do memory[i]=0 end
 
-local function getMem(x) return memory[(x % 0x10000) + 1] end
+local function getMem(x) 
+    addr = bit.band(x,0xFFFF)
+    if addr == 0xFF0F then return bit.bor(memory[addr + 1],0xE0) end
+    return memory[addr + 1] 
+end
 
 local function setMemDirect(x,val) 
     local addr = bit.band(x,0xFFFF)
@@ -123,6 +127,9 @@ local function setMem(x,val)
     elseif (addr>=0xC000) and (addr<=0xDDFF) then
         memory[addr + 1] = bit.band(val,0xFF)
         memory[addr + 0x2000 + 1] = bit.band(val,0xFF)
+    elseif (addr>=0xE000) and (addr<=0xFDFF) then
+        memory[addr + 1] = bit.band(val,0xFF)
+        memory[addr - 0x2000 + 1] = bit.band(val,0xFF)
     else
         local handler = reg_handlers[addr]
         if handler then
@@ -204,10 +211,10 @@ local function setRegE(x) reg_E=x end
 local function setRegH(x) reg_H=x end
 local function setRegL(x) reg_L=x end
 
-local function setRegAF(x) x=x; reg_A=math.floor(x/256); reg_F=bit.band(x, 0xF0) end
-local function setRegBC(x) x=x; reg_B=math.floor(x/256); reg_C=bit.band(x,0xFF) end
-local function setRegDE(x) x=x; reg_D=math.floor(x/256); reg_E=bit.band(x,0xFF) end
-local function setRegHL(x) x=x; reg_H=math.floor(x/256); reg_L=bit.band(x,0xFF) end
+local function setRegAF(x) x=x; reg_A=bit.band(bit.rshift(x, 8), 0xFF); reg_F=bit.band(x, 0xF0) end
+local function setRegBC(x) x=x; reg_B=bit.band(bit.rshift(x, 8), 0xFF); reg_C=bit.band(x,0xFF) end
+local function setRegDE(x) x=x; reg_D=bit.band(bit.rshift(x, 8), 0xFF); reg_E=bit.band(x,0xFF) end
+local function setRegHL(x) x=x; reg_H=bit.band(bit.rshift(x, 8), 0xFF); reg_L=bit.band(x,0xFF) end
 
 local function getIndRegHL() idle(1); return getMem(getRegHL()) end
 local function setIndRegHL(x) idle(1); setMem(getRegHL(), x) end
@@ -558,7 +565,7 @@ end
 -- JR e, 0x18
 opcodes[0x18+1] = function()
     local e = getOpcode()
-    pc = pc + toSigned8(e)
+    pc = bit.band(pc + toSigned8(e),0xFFFF)
     idle(2)
 end
 
@@ -1014,7 +1021,15 @@ opcodes[0xCC + 1] = function() op_call(getFlagZ()) end
 opcodes[0xDC + 1] = function() op_call(getFlagC()) end
 opcodes[0xCD + 1] = function() op_call(true) end
 
--- add test here later maybe
+-- handle the illegals like ice (evil joke)
+local illegals = {0xD3, 0xDB, 0xDD, 0xE3, 0xE4, 0xEB, 0xEC, 0xED, 0xF4, 0xFC, 0xFD}
+local function op_illegal()
+    -- handle this somehow idk, lets just do nothing for now
+    return
+end
+for i=1,#illegals do
+    opcodes[illegals[i] + 1] = function() op_illegal() end
+end
 
 ----------------------
 -- prefixed opcodes --
