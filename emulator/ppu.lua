@@ -1,6 +1,4 @@
 local vm = require "emulator.vm"
-local ppu = require "emulator.ppu"
-local apu = require "emulator.apu"
 
 -- function to get and set memory at the address
 local getMem = vm.getMem
