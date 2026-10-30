@@ -7,6 +7,7 @@ local keybindings = conf.keybindings
 
 local love = require "love"
 local apu = require "emulator.apu"
+local ppu = require "emulator.ppu"
 local vm = require "emulator.vm"
 
 -- current screen
