@@ -12,7 +12,7 @@ local memory = {}
 for i=1,0x10000 do memory[i]=0 end
 
 local function getMem(x) 
-    addr = bit.band(x,0xFFFF)
+    local addr = bit.band(x,0xFFFF)
     if addr == 0xFF0F then return bit.bor(memory[addr + 1],0xE0) end
     return memory[addr + 1] 
 end
@@ -111,6 +111,66 @@ function vm.setButton(name, pressed)
     joypadRefresh()
 end
 
+-- cartridge / MBC1
+local rom = {}               -- the whole ROM, 1-based like memory (rom[1] = first byte)
+local mbc_type = 0           -- 0 = ROM only, 1 = MBC1
+local rom_banks = 2          -- number of 16 KB banks
+local ram_banks = 0          -- number of 8 KB cartridge RAM banks
+local cart_ram = {}          -- all cartridge RAM, 1-based
+local ram_bank_loaded = 0    -- which RAM bank is currently in memory[0xA000..0xBFFF]
+local ram_enabled = false
+local bank1 = 1              -- 5-bit register, 0x2000-0x3FFF, never 0
+local bank2 = 0              -- 2-bit register, 0x4000-0x5FFF
+local mbc_mode = 0           -- 0x6000-0x7FFF
+local loaded_low, loaded_high = -1, -1   -- banks currently copied into memory
+
+local function copyRomBank(bank, dest)   -- dest is 0x0000 or 0x4000
+    local src = bank * 0x4000
+    for i = 1, 0x4000 do
+        memory[dest + i] = rom[src + i]
+    end
+end
+
+local function mbcUpdateRomBanks()
+    local low = (mbc_mode == 1) and bit.lshift(bank2, 5) or 0
+    local high = bit.bor(bit.lshift(bank2, 5), bank1)
+    low = low % rom_banks
+    high = high % rom_banks
+    if low ~= loaded_low then copyRomBank(low, 0x0000); loaded_low = low end
+    if high ~= loaded_high then copyRomBank(high, 0x4000); loaded_high = high end
+end
+
+local function mbcUpdateRamBank()
+    if ram_banks == 0 then return end
+    local wanted = (mbc_mode == 1) and (bank2 % ram_banks) or 0
+    if wanted == ram_bank_loaded then return end
+    -- save the bank that's in the window, load the new one
+    local old_base = ram_bank_loaded * 0x2000
+    for i = 1, 0x2000 do cart_ram[old_base + i] = memory[0xA000 + i] end
+    local new_base = wanted * 0x2000
+    for i = 1, 0x2000 do memory[0xA000 + i] = cart_ram[new_base + i] end
+    ram_bank_loaded = wanted
+end
+
+local function mbcWrite(addr, val)
+    if mbc_type == 0 then return end
+    if addr < 0x2000 then
+        ram_enabled = bit.band(val, 0x0F) == 0x0A
+    elseif addr < 0x4000 then
+        bank1 = bit.band(val, 0x1F)
+        if bank1 == 0 then bank1 = 1 end
+        mbcUpdateRomBanks()
+    elseif addr < 0x6000 then
+        bank2 = bit.band(val, 0x03)
+        mbcUpdateRomBanks()
+        mbcUpdateRamBank()
+    else
+        mbc_mode = bit.band(val, 0x01)
+        mbcUpdateRomBanks()
+        mbcUpdateRamBank()
+    end
+end
+
 local reg_handlers = {
     [0xFF00] = function(val) joy_select = bit.band(val, 0x30); joypadRefresh() end,
     [0xFF02] = onSerialControl,
@@ -123,6 +183,7 @@ local function setMem(x,val)
     local addr = bit.band(x,0xFFFF)
 
     if addr<0x8000 then
+        mbcWrite(addr, val)
         return
     elseif (addr>=0xC000) and (addr<=0xDDFF) then
         memory[addr + 1] = bit.band(val,0xFF)
@@ -244,7 +305,7 @@ local function setFlags(z, n, h, c)
     setRegF(f)
 end
 
--- reset, only use this for tests
+-- reset, only use this for tests, legacy
 local function resetVM()
     for i=1,0x10000 do memory[i]=0 end
     reg_A=0; reg_F=0; reg_B=0; reg_C=0; reg_D=0; reg_E=0; reg_H=0; reg_L=0
@@ -270,8 +331,19 @@ local function initVM()
     setMem(0xFF0F,0xE1); setMem(0xFF40,0x91); setMem(0xFF41,0x85)
     setMem(0xFF47,0xFC); setMem(0xFF00,0xCF); setMem(0xFF48,0xFF)
     setMem(0xFF49,0xFF)
-    serial_counter = 0;
-    div_counter = 0;
+    serial_counter = 0
+    div_counter = 0
+    rom = {}
+    mbc_type = 0
+    rom_banks = 2
+    ram_banks = 0
+    cart_ram ={}
+    ram_bank_loaded = 0
+    ram_enabled = false
+    bank1 = 1
+    bank2 = 0
+    mbc_mode = 0
+    loaded_low, loaded_high = -1, -1  
 end
 
 local function getLowestSetBit(x)
@@ -281,6 +353,35 @@ local function getLowestSetBit(x)
         pos = pos + 1
     end
     return pos
+end
+
+local RAM_BANKS = { [0] = 0, [1] = 0, [2] = 1, [3] = 4, [4] = 16, [5] = 8 }
+
+function vm.loadRom(data)
+    if #data < 0x150 then return nil, "ROM is too small to have a header" end
+    local type_byte = data:byte(0x147 + 1)
+    if type_byte > 0x03 then
+        return nil, string.format("unsupported cartridge type 0x%02X", type_byte)
+    end
+
+    initVM()
+    rom = {}
+    for i = 1, #data do rom[i] = data:byte(i) end
+
+    mbc_type = (type_byte >= 1) and 1 or 0
+    rom_banks = bit.lshift(2, data:byte(0x148 + 1))
+    ram_banks = RAM_BANKS[data:byte(0x149 + 1)] or 0
+    -- pad if the file is shorter than the header claims, so copies never hit nil
+    for i = #data + 1, rom_banks * 0x4000 do rom[i] = 0xFF end
+
+    cart_ram = {}
+    for i = 1, ram_banks * 0x2000 do cart_ram[i] = 0 end
+    ram_bank_loaded = 0
+    ram_enabled = false
+    bank1 = 1; bank2 = 0; mbc_mode = 0
+    loaded_low, loaded_high = -1, -1
+    mbcUpdateRomBanks()          -- copies banks 0 and 1 into memory
+    return true
 end
 
 -------------------------------------
@@ -2586,6 +2687,27 @@ test.unit "vm - joypad" (function()
     setMem(0xFF00, 0x10)                                   -- now select actions
     assert(bit.band(getMem(0xFF00), 0x0F) == 0x0E)         -- A reads 0
     vm.setButton("a", false)
+    resetVM()
+end)
+
+test.unit "vm - MBC1" (function()
+    local bytes = {}
+    for i = 1, 8 * 0x4000 do bytes[i] = 0 end
+    for b = 0, 7 do bytes[b * 0x4000 + 1] = b end
+    bytes[0x147 + 1] = 0x01     -- type: MBC1
+    bytes[0x148 + 1] = 0x02     -- 128 KB = 8 banks
+    bytes[0x149 + 1] = 0x00     -- no RAM
+    local chars = {}
+    for i = 1, #bytes do chars[i] = string.char(bytes[i]) end
+    assert(vm.loadRom(table.concat(chars)))
+
+    assert(getMem(0x0000) == 0 and getMem(0x4000) == 1)   -- bank 0 fixed, bank 1 default
+    setMem(0x2000, 0x03); assert(getMem(0x4000) == 3)
+    setMem(0x2000, 0x00); assert(getMem(0x4000) == 1)     -- writing 0 selects bank 1
+    setMem(0x2000, 0x08); assert(getMem(0x4000) == 0)     -- wraps by ROM size
+    setMem(0x2000, 0x07); assert(getMem(0x4000) == 7)
+
+    mbc_type = 0
     resetVM()
 end)
 

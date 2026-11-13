@@ -54,12 +54,9 @@ local function romLoad(filename)
     if not data or #data == 0 then
         return nil, "ROM is empty or could not be read"
     end
-    if #data > 0x8000 then return nil, "ROM too large (needs bank switching)" end
 
-    vm.initVM()
-    for i = 1, #data do
-        vm.memory[i] = data:byte(i)
-    end
+    local ok, loadErr = vm.loadRom(data)
+    if not ok then return nil, loadErr end
     print("file loaded successfully :3")
     return #data
 end
