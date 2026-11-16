@@ -56,6 +56,9 @@ local function romLoad(filename)
     end
 
     local ok, loadErr = vm.loadRom(data)
+    -- FOR DEBUG/TESTS
+    test_text_printed = 0; test_status_reported = nil
+    -- \ FOR DEBUG/TESTS
     if not ok then return nil, loadErr end
     print("file loaded successfully :3")
     return #data
@@ -175,6 +178,25 @@ function love.draw()
     end
 end
 
+
+-- FOR DEBUG/TESTS
+local test_text_printed = 0       -- characters of the $A004 string already printed
+local test_status_reported = nil
+
+local function pollTestOutput()
+    local status, text = vm.getTestResult()
+    if not status then return end
+    if #text > test_text_printed then
+        io.write(text:sub(test_text_printed + 1)); io.flush()
+        test_text_printed = #text
+    end
+    if status ~= 0x80 and status ~= test_status_reported then
+        test_status_reported = status
+        print(string.format("\n[test finished, status = $%02X]", status))
+    end
+end
+-- \ FOR DEBUG/TESTS
+
 local cycle_accumulator = 0
 local cpu_cycle = vm.cycle
 local apu_cycle = apu.cycle
@@ -188,4 +210,8 @@ function love.update(dt)
         cycle_accumulator = cycle_accumulator - 1
     end
     -- apu_queue() -- push any rendered audio to the source. this guarantees only one push per cycle
+
+    -- FOR DEBUG/TESTS
+    pollTestOutput()
+    -- \ FOR DEBUG/TESTS
 end

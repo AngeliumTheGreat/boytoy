@@ -528,6 +528,24 @@ local function toSigned8(value)
     return value
 end
 
+-- FOR DEBUG/TESTS
+-- Blargg's newer test ROMs write results to cartridge RAM:
+-- $A000 = status ($80 while running, 0 = passed, else a failure code)
+-- $A001-$A003 = DE B0 61 signature, $A004... = zero-terminated text
+function vm.getTestResult()
+    if memory[0xA001 + 1] ~= 0xDE or memory[0xA002 + 1] ~= 0xB0 or memory[0xA003 + 1] ~= 0x61 then
+        return nil
+    end
+    local chars = {}
+    local addr = 0xA004
+    while memory[addr + 1] ~= 0 and addr < 0xBFFF do
+        chars[#chars + 1] = string.char(memory[addr + 1])
+        addr = addr + 1
+    end
+    return memory[0xA000 + 1], table.concat(chars)
+end
+-- \ FOR DEBUG/TESTS
+
 -------------
 -- opcodes --
 -------------
