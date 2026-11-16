@@ -50,27 +50,52 @@ local function doOAMDMA(sourcePage)
     end
 end
 
-local div_counter = 0   -- internal 16-bit counter
+local div_counter = 0        -- internal 16-bit counter
 local TIMA_BIT = { [0] = 9, [1] = 3, [2] = 5, [3] = 7 }
+local tima_reload_delay = 0  -- T-cycles until TIMA reloads after an overflow (0 = nothing pending)
+local tima_reloading = 0     -- T-cycles left in the window where TIMA is being loaded from TMA
+
+-- 1 if the timer is enabled and the selected counter bit is set
+local function timerSignal(counter, tac)
+    if bit.band(tac, 0x04) == 0 then return 0 end
+    local mask = bit.lshift(1, TIMA_BIT[bit.band(tac, 0x03)])
+    return (bit.band(counter, mask) ~= 0) and 1 or 0
+end
+
+local function incrementTIMA()
+    local tima = memory[0xFF05 + 1] + 1
+    if tima > 0xFF then
+        memory[0xFF05 + 1] = 0x00
+        tima_reload_delay = 4       -- reload + interrupt happen one M-cycle later
+    else
+        memory[0xFF05 + 1] = tima
+    end
+end
+
+-- change the counter and/or TAC, and increment TIMA if the signal falls
+local function timerSetState(new_counter, new_tac)
+    local old_signal = timerSignal(div_counter, memory[0xFF07 + 1])
+    div_counter = new_counter
+    memory[0xFF07 + 1] = new_tac
+    memory[0xFF04 + 1] = bit.rshift(div_counter, 8)    -- DIV
+    if old_signal == 1 and timerSignal(div_counter, new_tac) == 0 then
+        incrementTIMA()
+    end
+end
 
 local function timerTick()
-    local old = div_counter
-    div_counter = bit.band(div_counter + 1, 0xFFFF)
-    memory[0xFF04 + 1] = bit.rshift(div_counter, 8)   -- DIV
-
-    local tac = memory[0xFF07 + 1]
-    if bit.band(tac, 0x04) == 0 then return end        -- timer disabled
-
-    local mask = bit.lshift(1, TIMA_BIT[bit.band(tac, 0x03)])
-    if bit.band(old, mask) ~= 0 and bit.band(div_counter, mask) == 0 then
-        local tima = memory[0xFF05 + 1] + 1
-        if tima > 0xFF then
-            memory[0xFF05 + 1] = memory[0xFF06 + 1]                       -- reload from TMA
-            memory[0xFF0F + 1] = bit.bor(memory[0xFF0F + 1], 0x04)        -- timer interrupt
-        else
-            memory[0xFF05 + 1] = tima
+    if tima_reload_delay > 0 then
+        tima_reload_delay = tima_reload_delay - 1
+        if tima_reload_delay == 0 then
+            memory[0xFF05 + 1] = memory[0xFF06 + 1]                    -- TIMA = TMA
+            memory[0xFF0F + 1] = bit.bor(memory[0xFF0F + 1], 0x04)     -- timer interrupt
+            tima_reloading = 4
         end
+    elseif tima_reloading > 0 then
+        tima_reloading = tima_reloading - 1
     end
+
+    timerSetState(bit.band(div_counter + 1, 0xFFFF), memory[0xFF07 + 1])
 end
 
 local joy_dpad = 0       -- bit set = held. bit0 right, bit1 left, bit2 up, bit3 down
@@ -174,7 +199,19 @@ end
 local reg_handlers = {
     [0xFF00] = function(val) joy_select = bit.band(val, 0x30); joypadRefresh() end,
     [0xFF02] = onSerialControl,
-    [0xFF04] = function() div_counter = 0; memory[0xFF04 + 1] = 0 end,
+    [0xFF04] = function() timerSetState(0, memory[0xFF07 + 1]) end,   -- DIV: any write resets the counter
+    [0xFF05] = function(val)                                          -- TIMA
+        if tima_reloading > 0 then return end        -- ignored while it's being loaded from TMA
+        tima_reload_delay = 0                        -- a write before the reload cancels it and its interrupt
+        memory[0xFF05 + 1] = bit.band(val, 0xFF)
+    end,
+    [0xFF06] = function(val)                                          -- TMA
+        memory[0xFF06 + 1] = bit.band(val, 0xFF)
+        if tima_reloading > 0 then memory[0xFF05 + 1] = bit.band(val, 0xFF) end
+    end,
+    [0xFF07] = function(val)                                          -- TAC (unused bits read as 1)
+        timerSetState(div_counter, bit.bor(bit.band(val, 0x07), 0xF8))
+    end,
     [0xFF44] = function() end,
     [0xFF46] = function(val) doOAMDMA(val) end
 }
@@ -316,6 +353,7 @@ local function resetVM()
     joy_dpad = 0; joy_action = 0; joy_select = 0x30
     serial_counter = 0;  
     div_counter = 0;
+    tima_reload_delay = 0; tima_reloading = 0
 end
 
 -- correct initialization tho
@@ -344,6 +382,7 @@ local function initVM()
     bank2 = 0
     mbc_mode = 0
     loaded_low, loaded_high = -1, -1  
+    tima_reload_delay = 0; tima_reloading = 0
 end
 
 local function getLowestSetBit(x)
@@ -505,22 +544,22 @@ end
 
 
 -- LD, 0xX2
-opcodes[0x02+1] = function() setMem(getRegBC(), getRegA()); idle(1)  end
-opcodes[0x12+1] = function() setMem(getRegDE(), getRegA()); idle(1) end
-opcodes[0x22+1] = function() setMem(getRegHL(), getRegA()); setRegHL(getRegHL()+1); idle(1) end
-opcodes[0x32+1] = function() setMem(getRegHL(), getRegA()); setRegHL(getRegHL()-1); idle(1) end
+opcodes[0x02+1] = function() idle(1); setMem(getRegBC(), getRegA()) end
+opcodes[0x12+1] = function() idle(1); setMem(getRegDE(), getRegA()) end
+opcodes[0x22+1] = function() idle(1); setMem(getRegHL(), getRegA()); setRegHL(getRegHL()+1) end
+opcodes[0x32+1] = function() idle(1); setMem(getRegHL(), getRegA()); setRegHL(getRegHL()-1) end
 
 -- LD, 0xX6
 opcodes[0x06+1] = function() setRegB(getOpcode()); idle(1) end
 opcodes[0x16+1] = function() setRegD(getOpcode()); idle(1) end
 opcodes[0x26+1] = function() setRegH(getOpcode()); idle(1) end
-opcodes[0x36+1] = function() setMem(getRegHL(),getOpcode()); idle(2) end
+opcodes[0x36+1] = function() local n = getOpcode(); idle(2); setMem(getRegHL(), n) end
 
 -- LD, 0xXA
-opcodes[0x0A+1] = function() setRegA(getMem(getRegBC())); idle(1) end
-opcodes[0x1A+1] = function() setRegA(getMem(getRegDE())); idle(1) end
-opcodes[0x2A+1] = function() setRegA(getMem(getRegHL())); setRegHL(getRegHL()+1); idle(1) end
-opcodes[0x3A+1] = function() setRegA(getMem(getRegHL())); setRegHL(getRegHL()-1); idle(1) end
+opcodes[0x0A+1] = function() idle(1); setRegA(getMem(getRegBC())) end
+opcodes[0x1A+1] = function() idle(1); setRegA(getMem(getRegDE())) end
+opcodes[0x2A+1] = function() idle(1); setRegA(getMem(getRegHL())); setRegHL(getRegHL()+1) end
+opcodes[0x3A+1] = function() idle(1); setRegA(getMem(getRegHL())); setRegHL(getRegHL()-1) end
 
 -- LD, 0xXE
 opcodes[0x0E+1] = function() setRegC(getOpcode()); idle(1) end
@@ -529,20 +568,24 @@ opcodes[0x2E+1] = function() setRegL(getOpcode()); idle(1) end
 opcodes[0x3E+1] = function() setRegA(getOpcode()); idle(1) end
 
 -- LDH, 0xE0, 0xF0, 0xE2, 0xF2
-opcodes[0xE0+1] = function() setMem(getOpcode()+0xFF00,getRegA()); idle(2) end
-opcodes[0xF0+1] = function() setRegA(getMem(getOpcode()+0xFF00)); idle(2) end
-opcodes[0xE2+1] = function() setMem(getRegC()+0xFF00,getRegA()); idle(1) end
-opcodes[0xF2+1] = function() setRegA(getMem(getRegC()+0xFF00)); idle(1) end
+opcodes[0xE0+1] = function() local n = getOpcode(); idle(2); setMem(n+0xFF00, getRegA()) end
+opcodes[0xF0+1] = function() local n = getOpcode(); idle(2); setRegA(getMem(n+0xFF00)) end
+opcodes[0xE2+1] = function() idle(1); setMem(getRegC()+0xFF00, getRegA()) end
+opcodes[0xF2+1] = function() idle(1); setRegA(getMem(getRegC()+0xFF00)) end
 
 -- LD, 0xEA, 0xFA
 opcodes[0xEA+1] = function()
     local lo = getOpcode()
     local hi = getOpcode()
-    setMem(hi * 0x100 + lo, getRegA()); idle(3) end
+    idle(3)
+    setMem(hi * 0x100 + lo, getRegA())
+end
 opcodes[0xFA+1] = function()
     local lo = getOpcode()
     local hi = getOpcode()
-    setRegA(getMem(hi * 0x100 + lo)); idle(3) end
+    idle(3)
+    setRegA(getMem(hi * 0x100 + lo))
+end
 
 -- DI, disable interrupts, 0xF3
 
@@ -2708,6 +2751,46 @@ test.unit "vm - MBC1" (function()
     setMem(0x2000, 0x07); assert(getMem(0x4000) == 7)
 
     mbc_type = 0
+    resetVM()
+end)
+
+test.unit "vm - timer" (function()
+    -- TAC=5: enabled, TIMA +1 every 16 T-cycles (counter bit 3 falls)
+    -- reload is delayed by one M-cycle
+    resetVM()
+    setMem(0xFF07, 0x05); setMem(0xFF06, 0x23); setMem(0xFF05, 0xFF)
+    for i = 1, 16 do timerTick() end
+    assert(getMem(0xFF05) == 0x00)                       -- overflowed, not reloaded yet
+    assert(bit.band(getMem(0xFF0F), 0x04) == 0)          -- no interrupt yet
+    for i = 1, 4 do timerTick() end
+    assert(getMem(0xFF05) == 0x23)                       -- now reloaded from TMA
+    assert(bit.band(getMem(0xFF0F), 0x04) == 0x04)       -- and the interrupt is requested
+
+    -- writing TIMA during the delay cancels the reload and the interrupt
+    resetVM()
+    setMem(0xFF07, 0x05); setMem(0xFF06, 0x23); setMem(0xFF05, 0xFF)
+    for i = 1, 16 do timerTick() end
+    setMem(0xFF05, 0x77)
+    for i = 1, 8 do timerTick() end
+    assert(getMem(0xFF05) == 0x77)
+    assert(bit.band(getMem(0xFF0F), 0x04) == 0)
+
+    -- writing DIV while the selected bit is 1 increments TIMA
+    resetVM()
+    setMem(0xFF07, 0x05)
+    for i = 1, 8 do timerTick() end                      -- counter = 8, bit 3 is 1
+    setMem(0xFF05, 0x10)
+    setMem(0xFF04, 0)
+    assert(getMem(0xFF05) == 0x11)
+    assert(getMem(0xFF04) == 0)
+
+    -- disabling the timer while the selected bit is 1 increments TIMA
+    resetVM()
+    setMem(0xFF07, 0x05)
+    for i = 1, 8 do timerTick() end
+    setMem(0xFF07, 0x01)
+    assert(getMem(0xFF05) == 0x01)
+
     resetVM()
 end)
 
