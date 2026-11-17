@@ -167,6 +167,8 @@ local function drawMenu()
 end
 
 function love.load()
+    -- for performance benchmarking:
+    -- vm.benchmark(10)
     love.keyboard.setKeyRepeat(true)
     love.window.setTitle("Game Boy Emulator")
     love.window.setMode(640, 480)

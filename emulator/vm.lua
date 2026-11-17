@@ -2812,5 +2812,59 @@ test.unit "vm - timer" (function()
     resetVM()
 end)
 
+-- performance benchmark: how many T-cycles per second can the vm run?
+-- NOTE: this resets the whole vm (initVM), so call it at startup, before loading a ROM
+function vm.benchmark(seconds)
+    seconds = seconds or 3
+    local GB_CLOCK = 4194304            -- T-cycles per second on a real DMG
+
+    initVM()
+
+    -- small test program at 0x100 (pc starts at 0x100 after initVM): fills WRAM with
+    -- a pattern using ALU ops, loads, (HL+) stores, compares, jr, call, push/pop and ret
+    local program = {
+        0x21,0x00,0xC0,     -- 0100  LD HL,C000
+        0x06,0x00,          -- 0103  LD B,00
+        0x78,               -- 0105  loop: LD A,B
+        0xC6,0x03,          -- 0106  ADD A,03
+        0xEE,0x5A,          -- 0108  XOR 5A
+        0x22,               -- 010A  LD (HL+),A
+        0x04,               -- 010B  INC B
+        0x7C,               -- 010C  LD A,H
+        0xFE,0xD0,          -- 010D  CP D0
+        0x20,0x03,          -- 010F  JR NZ,0114
+        0x21,0x00,0xC0,     -- 0111  LD HL,C000
+        0xCD,0x19,0x01,     -- 0114  CALL 0119
+        0x18,0xEC,          -- 0117  JR loop
+        0xC5,               -- 0119  PUSH BC
+        0xC1,               -- 011A  POP BC
+        0xC9,               -- 011B  RET
+    }
+    for i = 1, #program do memory[0x100 + i] = program[i] end
+
+    -- warm up so LuaJIT has compiled the hot paths before we start timing
+    for _ = 1, 200000 do cycle() end
+
+    local chunk = 100000
+    local cycles = 0
+    local start = os.clock()
+    local elapsed = 0
+    while elapsed < seconds do
+        for _ = 1, chunk do cycle() end
+        cycles = cycles + chunk
+        elapsed = os.clock() - start
+    end
+
+    local cps = cycles / elapsed
+    print(string.format("[BENCH] %.2f million cycles/s  (%.2fx real Game Boy speed, %d cycles in %.2fs)",
+        cps / 1e6, cps / GB_CLOCK, cycles, elapsed))
+    if pc < 0x101 or pc > 0x11C then
+        print("[BENCH] warning: pc left the test program, the result may not be representative")
+    end
+
+    initVM()                            -- leave the vm in a clean state
+    return cps
+end
+
 resetVM()
 return vm
